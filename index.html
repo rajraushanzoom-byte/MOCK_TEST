@@ -1374,17 +1374,31 @@ async function j0Id(lang){
   if(re){ const m=j0Langs.filter(l=>re.test(String(l.name))); if(m.length) return m.reduce((a,b)=>b.id>a.id?b:a).id; }
   return J0_FALLBACK[k]||null;
 }
-/* Java must put its main class in Main.java, so rename the class that holds main */
+/* Java must put its main class in Main.java, so rename the class that holds main, and make every other top-level class non-public (a real Java compiler refuses two public classes in one file) */
 function fixJava(lang,code){
   if(langKey(lang)!=='java') return code;
-  const mi=code.search(/static\s+void\s+main\s*\(/); if(mi<0) return code;
-  let name=null; const re=/\b(?:class|interface|enum|record)\s+([A-Za-z_]\w*)/g; let m;
-  while((m=re.exec(code))&&m.index<mi) name=m[1];
-  if(!name||name==='Main') return code;
-  return code.replace(new RegExp('\\b'+name+'\\b','g'),'Main');
+  /* blank out comments, strings and chars (same length) so braces and words inside them are ignored */
+  const clean=code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g,m=>m.replace(/[^\n]/g,' '));
+  const mi=clean.search(/void\s+main\s*\(/); if(mi<0) return code;
+  const tops=[]; let depth=0, re=/[{}]|\b(class|interface|enum|record)\s+([A-Za-z_]\w*)/g, m, open=null;
+  while((m=re.exec(clean))){
+    if(m[0]==='{'){ if(depth===0&&open&&open.start==null) open.start=m.index; depth++; }
+    else if(m[0]==='}'){ depth--; if(depth===0&&open&&open.start!=null){ open.end=m.index; tops.push(open); open=null; } }
+    else if(depth===0&&!open){ open={name:m[2],decl:m.index}; }
+  }
+  const holder=tops.find(t=>t.start<mi&&mi<t.end); if(!holder) return code;
+  let out=code, ops=[];
+  tops.forEach(t=>{ if(t!==holder) ops.push({at:t.decl,strip:true}); });
+  /* strip "public" in front of other top-level declarations, from the end so positions stay valid */
+  ops.sort((x,y)=>y.at-x.at).forEach(o=>{
+    const before=out.slice(0,o.at), mm=before.match(/\bpublic\s+((?:(?:abstract|final|static|sealed|strictfp)\s+)*)$/);
+    if(mm) out=before.slice(0,before.length-mm[0].length)+mm[1]+out.slice(o.at);
+  });
+  if(holder.name!=='Main') out=out.replace(new RegExp('\\b'+holder.name+'\\b','g'),'Main');
+  return out;
 }
 async function j0Run(lang,code,stdin){
-  if(langKey(lang)==='java'&&!/static\s+void\s+main\s*\(/.test(code)) return {stdout:'',stderr:'Your Java code has no main method, so Java has nothing to start. Add public static void main(String[] args) inside a class (it reads the input, calls your method and prints the result), or use Reset to get the starter code back.',timedOut:false,crashed:true,ms:0};
+  if(langKey(lang)==='java'&&!/void\s+main\s*\(/.test(code)) return {stdout:'',stderr:'Your Java code has no main method, so Java has nothing to start. Add public static void main(String[] args) inside a class (it reads the input, calls your method and prints the result), or use Reset to get the starter code back.',timedOut:false,crashed:true,ms:0};
   const id=await j0Id(lang); if(!id) throw new Error('no compiler for '+lang);
   const body=JSON.stringify({source_code:b64e(fixJava(lang,code)),language_id:id,stdin:b64e(stdin||''),cpu_time_limit:5,wall_time_limit:10});
   let res;
@@ -1679,6 +1693,15 @@ function mergeSol(starter,sol){
   const body=so.replace(/\s+$/,'').split('\n').map(l=>l.trim()?m[1]+l:l).join('\n');
   return st.replace(m[0],()=>body);
 }
+/* quick check that code looks like the chosen language, to catch an AI answer written in the wrong one */
+function wrongLang(lang,code){
+  const k=String(lang||'').toLowerCase(), c=String(code||'');
+  if(/java$|^java\b/.test(k)&&!/kotlin|script/.test(k)) return !/\bclass\s+\w+/.test(c)||/\bfunction\s+\w+\s*\(|\bdef\s+\w+\s*\(|console\.log|#include/.test(c);
+  if(/python/.test(k)) return /System\.out|#include|\bfunction\s+\w+\s*\(|console\.log|public\s+static/.test(c);
+  if(/c\+\+|^c$/.test(k)) return !/#include/.test(c)||/System\.out|console\.log|\bdef\s+\w+\s*\(/.test(c);
+  if(/javascript/.test(k)) return /System\.out|#include|\bdef\s+\w+\s*\(|public\s+static/.test(c);
+  return false;
+}
 function hintsPrompt(d){
   return 'You write hints for a programming exercise so that a complete beginner can get unstuck.\nLanguage: '+d.lang+'\nQuestion:\n'+d.statement+'\n'+(d.starter?'\nBoilerplate the student starts from:\n'+d.starter+'\n':'')+(d.solution?'\nCorrect solution (never reveal it):\n'+d.solution+'\n':'')
    +'\n'+HINT_RULE+'\nReply with JSON only: {"hints":[string]}.';
@@ -1693,7 +1716,7 @@ function improvePrompt(d){
    +'1. Rewrite the question text in clear, correct English. Fix spelling and grammar, remove numbering, marks and other noise, and keep every requirement and every name (function, class, variable) that the original asks for. Do not change what is asked. If something essential is missing, make the smallest sensible assumption and state it in the text. If several separate questions were pasted, work on the first one only.\n'
    +'2. Structure the statement in this order, with a blank line between parts: a short problem description; then **Input** (the input format); **Output** (the output format); **Constraints** (a "- " bullet list, only when useful); and nothing else. Do not write sample input or output in the statement, because the app shows examples automatically from the first two visible test cases. Leave out the parts that do not apply: for theory, HTML, CSS or no-input questions, describe the task and its requirements as a "- " bullet list instead. Labels are bold with double asterisks, code goes in ``` fences, inline code uses single backticks.\n'
    +'3. Phrase it as a program that reads standard input and prints its result whenever that makes sense, so that several test cases can be used.\n'
-   +'4. Write the reference solution as the WHOLE program from the first line to the last, in the chosen language only (never JavaScript or pseudocode in a Java answer). When the teacher gave boilerplate, start from it exactly (same imports, class and method names, signatures and the code that reads the input and prints), keep every line of it, and only replace the comment Write your solution here with working code, so the result compiles and runs with no error. When no boilerplate is needed (multiple-choice or theory) skip this. The solution must be correct for EVERY valid input, not just the examples: think about empty or smallest input, largest input, zero, negative numbers, duplicates, repeated or extra spaces, upper and lower case and every other boundary, then trace it by hand on every test and make sure it prints exactly the expected output.\n'
+   +'4. Write the reference solution as the WHOLE program from the first line to the last, in the chosen language only (never JavaScript or pseudocode in a Java answer). When the teacher gave boilerplate, start from it exactly (same imports, class and method names, signatures and the code that reads the input and prints), keep every line of it, and only replace the comment Write your solution here with working code, so the result compiles and runs with no error. When no boilerplate is needed (multiple-choice or theory) skip this. First work out exactly what the question asks and what the program must print. Read the input exactly as the Input section says (a whole line, which may contain spaces, is read as a whole line; numbers are read as numbers) and print ONLY what the Output section says: no prompts such as Enter a number, no labels, no extra words, no debug output, one value or line per the format, ending with a newline. Use only the standard library, no packages, and keep it runnable as a single file on a standard online compiler (Java 11 compatible, one top-level class named Main holding main, no package line). The solution must be correct for EVERY valid input, not just the examples: think about empty or smallest input, largest input, zero, negative numbers, duplicates, repeated or extra spaces, upper and lower case and every other boundary, then trace it by hand on every test and make sure it prints exactly the expected output.\n'
    +'5. Explain the solution in 3 to 6 plain sentences: the idea, the steps and the time complexity.\n'
    +'6. Hints: '+HINT_RULE+'\n'
    +'7. Choose an honest difficulty, a short topic and a proper title of at most 8 words (never just Question 1).\n'
@@ -2265,6 +2288,9 @@ async function improveForm(){
     set('f-statement',r.statement); set('f-title',r.title); set('f-topic',r.topic); if(!needBoiler) set('f-solution',r.solution);
     if(needBoiler){ set('f-preview',r.preview); if(['easy','medium','hard'].includes(r.difficulty)) $('#f-diff').value=r.difficulty; $('#f-extras').open=true; $('#btn-ai-undo').hidden=false; $('#f-starter').focus(); msg.textContent='Question cleaned up. Now write your boilerplate in Starter code, then click Improve with AI again and it will write the solution, hints and test cases to fit it.'; btn.disabled=false; return; }
     set('f-explain',r.explanation); set('f-preview',r.preview);
+    if(kd0==='code'&&wrongLang($('#f-lang').value,$('#f-solution').value)){
+      try{ msg.textContent='The solution was not in '+$('#f-lang').value+', rewriting it…'; const fx=await askAI('Rewrite this solution as a complete, correct '+$('#f-lang').value+' program that starts from the boilerplate below, keeps every line of it, and replaces only the Write your solution here comment. It must read the input and print exactly as the question says and print nothing else. Reply with JSON only: {"solution":string}\n\nQuestion:\n'+$('#f-statement').value+'\n\nBoilerplate:\n'+$('#f-starter').value+'\n\nSolution to rewrite:\n'+$('#f-solution').value); if(fx&&typeof fx.solution==='string'&&fx.solution.trim()) $('#f-solution').value=fx.solution.replace(/\s+$/,''); }catch(_){}
+    }
     if(['easy','medium','hard'].includes(r.difficulty)) $('#f-diff').value=r.difficulty;
     { let hl=Array.isArray(r.hints)?r.hints.map(String):(typeof r.hints==='string'?r.hints.split('\n'):[]); hl=hl.map(x=>x.replace(/^\s*(?:hint\s*)?\d+[\).:-]\s*/i,'').trim()).filter(Boolean); if(hl.length) $('#f-hints').value=hl.join('\n'); }
     const tl=normTests(r.tests); if(tl.length){ writeTests(tl); $('#f-testsd').open=true; }
