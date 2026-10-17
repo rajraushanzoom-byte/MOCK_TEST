@@ -413,7 +413,7 @@ code.inline{font:500 .9em var(--f-mono);background:var(--raise);border:1px solid
       <h1 id="form-title">Add a question</h1>
       <p class="dim" id="form-lede">Paste the question as it appears in your assignment. Only the folder or language and the question text are required.</p>
     </div>
-    <div class="note howto"><span><strong>How to add a question:</strong> copy the question from your assignment and paste it into the question box below. Choose the language, then click <strong>Improve with AI</strong> so it writes the solution, hints and test cases (this needs AI from the guide on the Library page). Check everything and click <strong>Save question</strong>. No AI yet? You can still save with just the question text.</span></div>
+    <div class="note howto"><span><strong>How to add a question:</strong> copy the question from your assignment and paste it into the question box below. Choose the language and write your boilerplate under <strong>Starter code</strong>, then click <strong>Improve with AI</strong> so it writes the solution, hints and test cases (this needs AI from the guide on the Library page). Check everything and click <strong>Save question</strong>. No AI yet? You can still save with just the question text.</span></div>
     <div class="card formcard">
       <div class="grid2">
         <div>
@@ -462,7 +462,7 @@ code.inline{font:500 .9em var(--f-mono);background:var(--raise);border:1px solid
         </div>
       </details>
       <div class="aicard">
-        <div><strong>Let AI finish this question</strong><p class="hint">Paste the rough question and pick the language. AI rewrites it as a proper exam question (title, clear description, input, output and constraints) and fills in the difficulty, topic, solution, explanation, hints, starter code and test cases. You review everything before saving.</p></div>
+        <div><strong>Let AI finish this question</strong><p class="hint">Paste the rough question and pick the language. AI rewrites it as a proper exam question (title, clear description, input, output and constraints) and fills in the difficulty, topic, solution, explanation, hints and test cases. Write your own boilerplate in Starter code first, and AI builds the solution on it without changing it. You review everything before saving.</p></div>
         <div class="checkrow"><input type="checkbox" id="f-auto" checked><label for="f-auto">Improve automatically when I paste a new question</label></div>
         <div class="row"><button type="button" class="btn" id="btn-ai-improve">Improve with AI</button><button type="button" class="btn ghost" id="btn-ai-undo" hidden>Undo AI changes</button><span class="dim" id="ai-form-msg" role="status"></span></div>
       </div>
@@ -1671,18 +1671,19 @@ const WEB_TESTS_RULE='"tests" is an array of 4 or 5 checks run inside the finish
 function improvePrompt(d){
   return 'You are an experienced programming teacher preparing exam practice material. A student pasted a question copied from an assignment, a PDF or a website. It may be rough, badly formatted or incomplete, and may contain typos, question numbers, marks or other noise.\n'
    +'Language chosen by the student: '+(d.lang||'(not chosen, detect it)')+'\nQuestion as pasted:\n'+d.statement+'\n'
+   +(d.starter?'\nBoilerplate (starter code) already written by the teacher. Do NOT change it and do NOT write another one. The solution must be this boilerplate with the comment where the student writes replaced by working code, and it must read the input exactly the way this boilerplate does:\n'+d.starter+'\n':'')
    +(d.solution?'\nSolution the student has so far (keep its idea if it is correct, fix it if it is not):\n'+d.solution+'\n':'')
    +'\nImprove EVERYTHING about this question so that it reads like a proper, well-written exam question:\n'
    +'1. Rewrite the question text in clear, correct English. Fix spelling and grammar, remove numbering, marks and other noise, and keep every requirement and every name (function, class, variable) that the original asks for. Do not change what is asked. If something essential is missing, make the smallest sensible assumption and state it in the text. If several separate questions were pasted, work on the first one only.\n'
    +'2. Structure the statement in this order, with a blank line between parts: a short problem description; then **Input** (the input format); **Output** (the output format); **Constraints** (a "- " bullet list, only when useful); and nothing else. Do not write sample input or output in the statement, because the app shows examples automatically from the first two visible test cases. Leave out the parts that do not apply: for theory, HTML, CSS or no-input questions, describe the task and its requirements as a "- " bullet list instead. Labels are bold with double asterisks, code goes in ``` fences, inline code uses single backticks.\n'
    +'3. Phrase it as a program that reads standard input and prints its result whenever that makes sense, so that several test cases can be used.\n'
-   +'4. Write a correct, clean, readable reference solution with short comments that handles the edge cases. It must be the starter boilerplate with the comment Write your solution here replaced by working code, it must compile and run with no error, it must read the input exactly the way the boilerplate does, and it must print exactly the expected output of every test. For HTML and CSS the starter is the page or stylesheet skeleton with the comment Write your solution here (include any element or selector the question names, but not the solution) and the solution is the complete HTML or CSS that passes every check.\n'
+   +'4. Write a correct, clean, readable reference solution with short comments that handles the edge cases. It must be a complete program that compiles and runs with no error. If the teacher gave boilerplate above, build the solution on exactly that boilerplate (keep it unchanged and fill in the place where the student writes); otherwise write a normal complete program. It must read the input in the format described, and it must print exactly the expected output of every test. For HTML and CSS the solution is the complete HTML or CSS that passes every check.\n'
    +'5. Explain the solution in 3 to 6 plain sentences: the idea, the steps and the time complexity.\n'
    +'6. Give 3 or 4 hints from gentle to strong that never reveal the full answer.\n'
    +'7. Choose an honest difficulty, a short topic and a proper title of at most 8 words (never just Question 1).\n'
    +'8. Create the test cases.\n'
    +'9. If the pasted text is a multiple-choice question (it lists options such as A, B, C, D or 1, 2, 3, 4), set "kind" to "mcq" and format it like this: the question text first, then a blank line, then every option as a "- " bullet line that starts with its letter, for example "- A) text", in the original order and wording (fix only spelling). Never add, remove or reorder options. Put the correct option in "solution" as "Correct answer: B) text" (list every correct letter if more than one is correct, and work it out if the original does not say), explain in "explanation" why it is right and briefly why the others are wrong, give 2 gentle hints, and leave "starter" and "tests" empty. Points 3 and 4 do not apply to multiple-choice questions. For every other question set "kind" to "code", or to "theory" when no code is expected.\n'
-   +'Reply with JSON only using these keys: {"language":string,"title":string,"statement":string,"kind":"code"|"mcq"|"theory","difficulty":"easy"|"medium"|"hard","topic":string (2 or 3 words),"starter":string (boilerplate only, written for this exact question: all imports or includes, the main wrapper, which is public class Main for Java, any class or method signature the question asks for, and the code that reads the input in the format described; put the comment Write your solution here, in the comment style of the language such as // Write your solution here, exactly where the student writes code; never include any part of the solution; empty for multiple-choice and theory questions),"solution":string,"explanation":string,"hints":[string],"tests":[...],"preview":string (only for CSS questions: the HTML the CSS is applied to, else empty),"note":string (one short sentence about an assumption you made or something unclear in the original, else empty)}\n'
+   +'Reply with JSON only using these keys: {"language":string,"title":string,"statement":string,"kind":"code"|"mcq"|"theory","difficulty":"easy"|"medium"|"hard","topic":string (2 or 3 words),"solution":string,"explanation":string,"hints":[string],"tests":[...],"preview":string (only for CSS questions: the HTML the CSS is applied to, else empty),"note":string (one short sentence about an assumption you made or something unclear in the original, else empty)}\n'
    +TESTS_RULE+' For HTML and CSS questions ignore that rule and use this one instead: '+WEB_TESTS_RULE+' For multiple-choice and theory questions leave "tests" empty. Use real newlines inside strings.';
 }
 function testsPrompt(d){
@@ -2221,16 +2222,15 @@ async function improveForm(){
   if(!statement){ msg.textContent='Paste the question text first.'; $('#f-statement').focus(); return; }
   btn.disabled=true; msg.textContent='Thinking… this takes a few seconds.';
   try{
-    const r=await askAI(improvePrompt({lang:$('#f-lang').value.trim(),statement,solution:$('#f-solution').value.trim()}));
+    const r=await askAI(improvePrompt({lang:$('#f-lang').value.trim(),statement,solution:$('#f-solution').value.trim(),starter:$('#f-starter').value.trim()}));
     const ids=['f-lang','f-statement','f-diff','f-topic','f-title','f-starter','f-solution','f-explain','f-hints','f-preview'];
     aiUndo={vals:{},tests:readTests()}; ids.forEach(i=>{ aiUndo.vals[i]=$('#'+i).value; });
     const set=(id,v)=>{ if(typeof v==='string'&&v.trim()) $('#'+id).value=v.replace(/\s+$/,''); };
     if(!$('#f-lang').value.trim()) set('f-lang',r.language);
-    set('f-statement',r.statement); set('f-title',r.title); set('f-topic',r.topic); set('f-starter',r.starter); set('f-solution',r.solution);
+    set('f-statement',r.statement); set('f-title',r.title); set('f-topic',r.topic); set('f-solution',r.solution);
     set('f-explain',r.explanation); set('f-preview',r.preview);
     if(['easy','medium','hard'].includes(r.difficulty)) $('#f-diff').value=r.difficulty;
     if(Array.isArray(r.hints)&&r.hints.length) $('#f-hints').value=r.hints.map(String).join('\n');
-    { const kd=String(r.kind||'').toLowerCase(); if(!$('#f-starter').value.trim()&&kd!=='mcq'&&kd!=='theory') $('#f-starter').value=boilerplate($('#f-lang').value); }
     const tl=normTests(r.tests); if(tl.length){ writeTests(tl); $('#f-testsd').open=true; }
     $('#f-extras').open=true; $('#btn-ai-undo').hidden=false;
     const kd=String(r.kind||'').toLowerCase();
@@ -2238,7 +2238,7 @@ async function improveForm(){
       try{ const t2=await askAI(testsPrompt({lang:$('#f-lang').value.trim(),statement:$('#f-statement').value,solution:$('#f-solution').value})); const more=normTests(t2.tests); if(more.length>$('#tests-box').children.length){ writeTests(more); $('#f-testsd').open=true; } }catch(_){}
     }
     let notes=[]; try{ notes=await verifyGenerated(kd,msg); }catch(_){ notes=['The solution could not be double-checked.']; }
-    msg.textContent='Done. '+notes.join(' ')+' '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Boilerplate, hints and test cases are ready, and the solution stays hidden until a student asks for it. Read everything, then save.';
+    msg.textContent='Done. '+notes.join(' ')+' '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Solution, hints and test cases are ready (your own boilerplate was not touched). Students see the hints and solution only when they ask for them. Read everything, then save.';
   }catch(e){ aiFail(msg,e); }
   btn.disabled=false;
 }
