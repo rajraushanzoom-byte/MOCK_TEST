@@ -1668,18 +1668,33 @@ function reviewPrompt(q,code){
 }
 const TESTS_RULE='"tests" is an array of 4 to 7 test cases for a program that reads standard input and prints its result: {"input":string (what is typed into the program, empty if it reads nothing),"expected":string (exact output),"hidden":boolean}. Include edge cases where they apply (smallest input, zero, negative numbers, duplicates, largest input). Mark the extra and edge cases hidden:true and the first one or two hidden:false. Work out every expected output by really tracing the reference solution.';
 const WEB_TESTS_RULE='"tests" is an array of 4 or 5 checks run inside the finished page: {"input":string (a short description of what is checked, for example Colour of the h1 heading),"expected":string (the exact expected value),"hidden":boolean,"check":string (ONE JavaScript expression that runs inside the page and returns the actual value as a string)}. Examples: getComputedStyle(document.querySelector("h1")).color with expected rgb(255, 0, 0); String(document.querySelectorAll("li").length) with expected 3; document.querySelector("h1").textContent.trim() with expected Hello; String(!!document.querySelector("nav a")) with expected true. Computed colours always look like rgb(r, g, b) and lengths like 16px. Every check must pass for your reference solution. Mark the two most important checks hidden:false and the rest hidden:true.';
+/* the saved solution can be just the code that goes where the boilerplate says "Write your solution here". To run it, put it into the boilerplate. */
+function mergeSol(starter,sol){
+  const st=String(starter||''), so=String(sol||'');
+  const m=st.match(/^([ \t]*)(?:\/\/|#|--|<!--|\/\*)\s*Write your solution here.*$/m);
+  if(!m||!so.trim()) return so;
+  const anchor=st.split('\n').map(x=>x.trim()).find(l=>l&&!/Write your solution here/.test(l));
+  if(anchor&&so.includes(anchor)) return so;
+  const body=so.replace(/\s+$/,'').split('\n').map(l=>l.trim()?m[1]+l:l).join('\n');
+  return st.replace(m[0],()=>body);
+}
+function hintsPrompt(d){
+  return 'You write hints for a programming exercise so that a complete beginner can get unstuck.\nLanguage: '+d.lang+'\nQuestion:\n'+d.statement+'\n'+(d.starter?'\nBoilerplate the student starts from:\n'+d.starter+'\n':'')+(d.solution?'\nCorrect solution (never reveal it):\n'+d.solution+'\n':'')
+   +'\n'+HINT_RULE+'\nReply with JSON only: {"hints":[string]}.';
+}
+const HINT_RULE='Write exactly 4 hints in very simple everyday English that a beginner can follow, from gentle to strong. Hint 1: say in one plain sentence what the code must do and what to think about first. Hint 2: the key idea, which variable, loop or method to use and why. Hint 3: the step by step plan as short numbered steps, using the real names from the question or the boilerplate. Hint 4: the tricky case (for example empty input, extra spaces or a boundary value) and exactly how to handle it. Each hint is 1 to 3 short sentences. No jargon, no long code: only a method name or operator in backticks when needed. Never write the final solution or a full line of it.';
 function improvePrompt(d){
   return 'You are an experienced programming teacher preparing exam practice material. A student pasted a question copied from an assignment, a PDF or a website. It may be rough, badly formatted or incomplete, and may contain typos, question numbers, marks or other noise.\n'
    +'Language chosen by the student: '+(d.lang||'(not chosen, detect it)')+'\nQuestion as pasted:\n'+d.statement+'\n'
-   +(d.starter?'\nBoilerplate (starter code) already written by the teacher. Do NOT change it and do NOT write another one. The solution must be this boilerplate with the comment where the student writes replaced by working code, and it must read the input exactly the way this boilerplate does:\n'+d.starter+'\n':'')
+   +(d.starter?'\nBoilerplate (starter code) already written by the teacher. Do NOT change it and do NOT write another one. The app runs code as ONE complete program, there is no hidden main program or driver. So the "solution" you return must be ONLY the code that replaces the comment "Write your solution here" (no boilerplate, no imports, no class or main wrapper, no repeated lines of the boilerplate), written in the chosen language, correct, and using only what the boilerplate already declares or imports (if the boilerplate has no such comment, return the whole program instead). Never say in the statement that a main program is already written unless this boilerplate really contains the code that reads the input and prints the result:\n'+d.starter+'\n':'')
    +(d.solution?'\nSolution the student has so far (keep its idea if it is correct, fix it if it is not):\n'+d.solution+'\n':'')
    +'\nImprove EVERYTHING about this question so that it reads like a proper, well-written exam question:\n'
    +'1. Rewrite the question text in clear, correct English. Fix spelling and grammar, remove numbering, marks and other noise, and keep every requirement and every name (function, class, variable) that the original asks for. Do not change what is asked. If something essential is missing, make the smallest sensible assumption and state it in the text. If several separate questions were pasted, work on the first one only.\n'
    +'2. Structure the statement in this order, with a blank line between parts: a short problem description; then **Input** (the input format); **Output** (the output format); **Constraints** (a "- " bullet list, only when useful); and nothing else. Do not write sample input or output in the statement, because the app shows examples automatically from the first two visible test cases. Leave out the parts that do not apply: for theory, HTML, CSS or no-input questions, describe the task and its requirements as a "- " bullet list instead. Labels are bold with double asterisks, code goes in ``` fences, inline code uses single backticks.\n'
    +'3. Phrase it as a program that reads standard input and prints its result whenever that makes sense, so that several test cases can be used.\n'
-   +'4. Write a correct, clean, readable reference solution with short comments that handles the edge cases. It must be a complete program that compiles and runs with no error. If the teacher gave boilerplate above, build the solution on exactly that boilerplate (keep it unchanged and fill in the place where the student writes); otherwise write a normal complete program. It must read the input in the format described, and it must print exactly the expected output of every test. For HTML and CSS the solution is the complete HTML or CSS that passes every check.\n'
+   +'4. Write a correct, clean, readable reference solution with short comments that handles the edge cases. It must be a complete program, written ONLY in the chosen language (never JavaScript or pseudocode in a Java answer), that compiles and runs with no error. If the teacher gave boilerplate above, the solution is only the code for the place where the student writes (the app puts it into the boilerplate to run it); otherwise write a normal complete program. Before answering, trace the solution by hand on every test and make sure it prints exactly the expected output. It must read the input in the format described, and it must print exactly the expected output of every test. For HTML and CSS the solution is the complete HTML or CSS that passes every check.\n'
    +'5. Explain the solution in 3 to 6 plain sentences: the idea, the steps and the time complexity.\n'
-   +'6. Give 3 or 4 hints from gentle to strong that never reveal the full answer.\n'
+   +'6. Hints: '+HINT_RULE+'\n'
    +'7. Choose an honest difficulty, a short topic and a proper title of at most 8 words (never just Question 1).\n'
    +'8. Create the test cases.\n'
    +'9. If the pasted text is a multiple-choice question (it lists options such as A, B, C, D or 1, 2, 3, 4), set "kind" to "mcq" and format it like this: the question text first, then a blank line, then every option as a "- " bullet line that starts with its letter, for example "- A) text", in the original order and wording (fix only spelling). Never add, remove or reorder options. Put the correct option in "solution" as "Correct answer: B) text" (list every correct letter if more than one is correct, and work it out if the original does not say), explain in "explanation" why it is right and briefly why the others are wrong, give 2 gentle hints, and leave "starter" and "tests" empty. Points 3 and 4 do not apply to multiple-choice questions. For every other question set "kind" to "code", or to "theory" when no code is expected.\n'
@@ -2108,7 +2123,7 @@ function testRow(t){
 const readTests=()=>$$('#tests-box .trow2').map(r=>r._get());
 function writeTests(list){ const box=$('#tests-box'); box.textContent=''; list.forEach(t=>box.append(testRow(t))); }
 async function fillTestOutputs(){
-  const msg=$('#tests-msg'), btn=$('#btn-filltests'), sol=$('#f-solution').value, lang=$('#f-lang').value.trim();
+  const msg=$('#tests-msg'), btn=$('#btn-filltests'), sol=mergeSol($('#f-starter').value,$('#f-solution').value), lang=$('#f-lang').value.trim();
   if(!sol.trim()){ msg.textContent='Add a solution first. Open "Solution, starter code and hints" above.'; return; }
   if(!lang){ msg.textContent='Choose the language first.'; return; }
   if(isWeb(lang)){
@@ -2198,28 +2213,46 @@ async function verifyGenerated(kd,msg){
     notes.push(fixed||dropped?'The checks were tested on the solution and '+(fixed?fixed+' expected value'+(fixed===1?' was':'s were')+' corrected':'')+(fixed&&dropped?' and ':'')+(dropped?dropped+' broken check'+(dropped===1?' was':'s were')+' removed':'')+'.':'The solution passes every check.');
     return notes;
   }
-  let r;
-  try{ r=await runProgram({lang},sol,rows.map(x=>x._inp.value),{onStatus:s=>{ msg.textContent=s; }}); }
+  const starter=$('#f-starter').value, full0=mergeSol(starter,sol), inputs=rows.map(x=>x._inp.value);
+  let cur=sol, r;
+  const run=async c=>runProgram({lang},mergeSol(starter,c),inputs,{onStatus:t=>{ msg.textContent=t; }});
+  const askFix=async(why)=>{
+    const fx=await askAI('The reference solution below is wrong.\nLanguage: '+lang+'\nQuestion:\n'+$('#f-statement').value+(starter.trim()?'\nBoilerplate (do not repeat it):\n'+starter+'\n':'')+'\nSolution'+(full0!==sol?' (only the code that goes where the boilerplate says Write your solution here)':'')+':\n'+cur+'\n'+why+'\nFix it. Keep the same shape: '+(full0!==sol?'return only the code for that place':'return the whole program')+'. Reply with JSON only: {"solution":string}');
+    if(!fx||typeof fx.solution!=='string'||!fx.solution.trim()) throw new Error('no fix'); return fx.solution.replace(/\s+$/,'');
+  };
+  try{ r=await run(cur); }
   catch(e){ return ['The solution could not be run to double-check the tests.']; }
   if(r.engine==='ai') return ['The outputs were predicted by AI, not run for real, so use Fill outputs by running my solution to double-check them.'];
-  const bad=r.results.find(o=>o&&(o.crashed||o.timedOut));
-  if(bad){
+  const crashed=x=>x.results.find(o=>o&&(o.crashed||o.timedOut));
+  if(crashed(r)){
     try{
-      const fx=await askAI('The reference solution below failed when it was run.\nLanguage: '+lang+'\nQuestion:\n'+$('#f-statement').value+'\nCode:\n'+sol+'\nError:\n'+String(bad.stderr||(bad.timedOut?'time limit exceeded':'')).slice(0,800)+'\nFix it. Keep the same input and output format. Reply with JSON only: {"solution":string}');
-      if(!fx||typeof fx.solution!=='string'||!fx.solution.trim()) throw new Error('no fix');
-      const r2=await runProgram({lang},fx.solution,rows.map(x=>x._inp.value));
-      if(r2.results.some(o=>o&&(o.crashed||o.timedOut))) return ['The solution still shows an error when it is run. Open it and fix it before saving.'];
-      $('#f-solution').value=fx.solution.replace(/\s+$/,''); r=r2; notes.push('The first solution had an error, so it was fixed and run again.');
+      const bad=crashed(r);
+      const fixed=await askFix('It failed when it was run.\nError:\n'+String(bad.stderr||(bad.timedOut?'time limit exceeded':'')).slice(0,800));
+      const r2=await run(fixed);
+      if(crashed(r2)) return ['The solution still shows an error when it is run. Open it and fix it before saving.'];
+      cur=fixed; r=r2; notes.push('The first solution had an error, so it was fixed and run again.');
     }catch(e){ return ['The solution shows an error when it is run. Open it and fix it before saving.']; }
   }
-  let fixed=0;
-  rows.forEach((row,i)=>{ const out=String((r.results[i]||{}).stdout||'').replace(/\s+$/,''); if(cmp(out)!==cmp(row._exp.value)){ row._exp.value=out; fixed++; } });
-  notes.push(fixed?fixed+' expected output'+(fixed===1?' was':'s were')+' corrected by really running the solution.':'The solution runs with no error and matches every test.');
+  const mism=()=>rows.map((row,i)=>({i,out:String((r.results[i]||{}).stdout||'').replace(/\s+$/,''),exp:row._exp.value})).filter(x=>cmp(x.out)!==cmp(x.exp));
+  let bad=mism();
+  if(bad.length){
+    try{
+      const why='When it was run it printed something different from the expected output on these tests. Work each one out by hand and decide whether the solution or the expected output is wrong.\n'+bad.slice(0,4).map(x=>'Input:\n'+inputs[x.i]+'\nExpected: '+x.exp+'\nPrinted: '+x.out).join('\n---\n');
+      const fixed=await askFix(why+'\nIf the expected outputs are the wrong ones and the solution is right, return the solution unchanged.');
+      if(fixed.trim()!==cur.trim()){ const r3=await run(fixed); if(!crashed(r3)){ const keep=r, keepCur=cur; r=r3; cur=fixed; const nb=mism().length; if(nb>bad.length){ r=keep; cur=keepCur; } else notes.push('The solution was wrong on some tests, so it was corrected and run again.'); } }
+    }catch(_){}
+    bad=mism();
+  }
+  $('#f-solution').value=cur.replace(/\s+$/,'');
+  let fixedN=0;
+  rows.forEach((row,i)=>{ const out=String((r.results[i]||{}).stdout||'').replace(/\s+$/,''); if(cmp(out)!==cmp(row._exp.value)){ row._exp.value=out; fixedN++; } });
+  notes.push(fixedN?fixedN+' expected output'+(fixedN===1?' was':'s were')+' corrected by really running the solution.':'The solution runs with no error and matches every test.');
   return notes;
 }
 async function improveForm(){
   const msg=$('#ai-form-msg'), btn=$('#btn-ai-improve'), statement=$('#f-statement').value.trim();
   if(!statement){ msg.textContent='Paste the question text first.'; $('#f-statement').focus(); return; }
+  let boilerWarn='';
   btn.disabled=true; msg.textContent='Thinking… this takes a few seconds.';
   try{
     const r=await askAI(improvePrompt({lang:$('#f-lang').value.trim(),statement,solution:$('#f-solution').value.trim(),starter:$('#f-starter').value.trim()}));
@@ -2230,15 +2263,21 @@ async function improveForm(){
     set('f-statement',r.statement); set('f-title',r.title); set('f-topic',r.topic); set('f-solution',r.solution);
     set('f-explain',r.explanation); set('f-preview',r.preview);
     if(['easy','medium','hard'].includes(r.difficulty)) $('#f-diff').value=r.difficulty;
-    if(Array.isArray(r.hints)&&r.hints.length) $('#f-hints').value=r.hints.map(String).join('\n');
+    { let hl=Array.isArray(r.hints)?r.hints.map(String):(typeof r.hints==='string'?r.hints.split('\n'):[]); hl=hl.map(x=>x.replace(/^\s*(?:hint\s*)?\d+[\).:-]\s*/i,'').trim()).filter(Boolean); if(hl.length) $('#f-hints').value=hl.join('\n'); }
     const tl=normTests(r.tests); if(tl.length){ writeTests(tl); $('#f-testsd').open=true; }
+    const stv=$('#f-starter').value, lgk=$('#f-lang').value.toLowerCase();
+    const needMain=/java|c\+\+|^c$|c#|go|rust/.test(lgk)&&!/kotlin|javascript/.test(lgk);
+    if(stv.trim()&&needMain&&!/\bmain\s*\(/.test(stv)) boilerWarn=' Warning: your boilerplate has no main method that reads the input and prints the answer, so it cannot run on its own. Add one.';
     $('#f-extras').open=true; $('#btn-ai-undo').hidden=false;
     const kd=String(r.kind||'').toLowerCase();
     if(kd!=='mcq'&&kd!=='theory'&&$('#tests-box').children.length<4&&$('#f-solution').value.trim()){
       try{ const t2=await askAI(testsPrompt({lang:$('#f-lang').value.trim(),statement:$('#f-statement').value,solution:$('#f-solution').value})); const more=normTests(t2.tests); if(more.length>$('#tests-box').children.length){ writeTests(more); $('#f-testsd').open=true; } }catch(_){}
     }
     let notes=[]; try{ notes=await verifyGenerated(kd,msg); }catch(_){ notes=['The solution could not be double-checked.']; }
-    msg.textContent='Done. '+notes.join(' ')+' '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Solution, hints and test cases are ready (your own boilerplate was not touched). Students see the hints and solution only when they ask for them. Read everything, then save.';
+    if($('#f-hints').value.split('\n').filter(x=>x.trim()).length<3){
+      try{ msg.textContent='Writing hints…'; const hr=await askAI(hintsPrompt({lang:$('#f-lang').value.trim(),statement:$('#f-statement').value,starter:$('#f-starter').value.trim(),solution:mergeSol($('#f-starter').value,$('#f-solution').value)})); const hh=(Array.isArray(hr.hints)?hr.hints:[]).map(x=>String(x).trim()).filter(Boolean); if(hh.length) $('#f-hints').value=hh.join('\n'); }catch(_){ notes.push('Hints could not be written, so add them yourself.'); }
+    }
+    msg.textContent='Done. '+notes.join(' ')+' '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Solution, hints and test cases are ready (your own boilerplate was not touched). Students see the hints and solution only when they ask for them. Read everything, then save.'+boilerWarn;
   }catch(e){ aiFail(msg,e); }
   btn.disabled=false;
 }
