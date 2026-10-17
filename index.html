@@ -652,28 +652,15 @@ function langKey(lang){
 }
 function hue(lang){ const k=langKey(lang); if(HUES[k]!=null) return HUES[k]; let n=0; for(let i=0;i<k.length;i++) n=(n*31+k.charCodeAt(i))%360; return n; }
 function kindOf(lang){ const l=langKey(lang); if(l==='javascript') return 'js'; if(l==='html') return 'html'; if(l==='css') return 'css'; return 'other'; }
-/* languages a student can pick to solve a question, and the blank starter for each */
+/* languages a student can pick to solve a question */
 const SOLVE_LANGS=['Python','Java','C++','C','JavaScript','TypeScript','C#','Go','Rust','Kotlin','Swift','PHP','Ruby'];
-const STARTER_TPL={
-  python:'# read the input and print the answer\n',
-  java:'import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // your code here\n    }\n}',
-  'c++':'#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // your code here\n    return 0;\n}',
-  c:'#include <stdio.h>\n\nint main(void) {\n    // your code here\n    return 0;\n}',
-  javascript:"const input = require('fs').readFileSync(0, 'utf8');\n// your code here\n",
-  typescript:"import * as fs from 'fs';\nconst input: string = fs.readFileSync(0, 'utf8');\n// your code here\n",
-  'c#':'using System;\n\nclass Program {\n    static void Main() {\n        // your code here\n    }\n}',
-  go:'package main\n\nimport "fmt"\n\nfunc main() {\n    // your code here\n    fmt.Println()\n}',
-  rust:'use std::io::{self, Read};\n\nfn main() {\n    let mut input = String::new();\n    io::stdin().read_to_string(&mut input).unwrap();\n    // your code here\n}',
-  kotlin:'fun main() {\n    // your code here\n}',
-  swift:'import Foundation\n\n// your code here\n',
-  php:'<?php\n// your code here\n',
-  ruby:'# read the input and print the answer\n'
-};
 const sameLang=(a,b)=>langKey(a)===langKey(b);
 const canPickLang=q=>{ const k=kindOf(q.lang); return k!=='html'&&k!=='css'&&langKey(q.lang)!=='sql'; };
-const starterFor=(q,lang)=>sameLang(lang,q.lang)?q.starter:(STARTER_TPL[langKey(lang)]||'// your code here\n');
+const isWeb=lang=>{ const k=kindOf(lang); return k==='html'||k==='css'; };
+const isMcq=q=>/^\s*Correct answer\s*:/i.test(q.solution||'')||((String(q.statement||'').match(/^\s*(?:[-*]\s*)?\(?[A-Da-d][).]\s+\S/gm)||[]).length>=3);
+const starterFor=(q,lang)=>sameLang(lang,q.lang)?(q.starter||(isMcq(q)?'':boilerplate(lang))):(boilerplate(lang)||'// Write your solution here\n');
 /* the question as seen in the chosen language: same tests, own starter code */
-const viewQ=(q,lang)=>sameLang(lang,q.lang)?q:Object.assign({},q,{lang:lang,starter:starterFor(q,lang),solLang:q.lang});
+const viewQ=(q,lang)=>sameLang(lang,q.lang)?Object.assign({},q,{starter:starterFor(q,lang)}):Object.assign({},q,{lang:lang,starter:starterFor(q,lang),solLang:q.lang});
 function langSelect(current,original,id){
   const sel=h('select',{id:id,style:'width:auto;min-width:150px'});
   const list=SOLVE_LANGS.slice(); if(!list.some(l=>sameLang(l,original))) list.unshift(original);
@@ -700,7 +687,7 @@ const saveSoon=()=>{ clearTimeout(saveT); saveT=setTimeout(save,400); };
 const saveExamSoon=()=>{ clearTimeout(examT); examT=setTimeout(saveExam,400); };
 
 function normTests(a){
-  return (Array.isArray(a)?a:[]).map(t=>({input:String(t&&t.input!=null?t.input:''),expected:String(t&&t.expected!=null?t.expected:''),hidden:!!(t&&t.hidden)})).filter(t=>t.expected.trim()!=='');
+  return (Array.isArray(a)?a:[]).map(t=>({input:String(t&&t.input!=null?t.input:''),expected:String(t&&t.expected!=null?t.expected:''),hidden:!!(t&&t.hidden),check:String(t&&t.check!=null?t.check:'')})).filter(t=>t.expected.trim()!=='');
 }
 function norm(q){
   let tests=normTests(q.tests);
@@ -1526,7 +1513,13 @@ function buildTerminal(q,getCode,o){
       const box=h('div',{class:'run'}); box.append(h('div',{class:'line cmd',text:'$ '+r.cmd}));
       if(r.pending) box.append(h('div',{class:'line cmd',text:r.status||'Running…'}));
       else if(r.error){ const d=h('div',{class:'line terr'}); aiFail(d,r.error); box.append(d); }
-      else lineOut(box,r);
+      else{
+        lineOut(box,r);
+        if(r.exp!=null&&!r.timedOut&&!r.crashed){
+          if(cmp(r.stdout)===cmp(r.exp)) box.append(h('div',{class:'line ok',text:'✓ Matches the expected output for this input.'}));
+          else{ box.append(h('div',{class:'line terr',text:'✗ The program ran, but the output is different from the expected output.'}),h('div',{class:'line cmd',text:'Expected output:'}),h('div',{class:'line',text:String(r.exp)}),h('div',{class:'line cmd',text:'Your output:'}),h('div',{class:'line',text:String(r.stdout||'').replace(/\s+$/,'')||'(nothing printed)'})); }
+        }
+      }
       body.append(box);
     });
     body.scrollTop=body.scrollHeight;
@@ -1543,12 +1536,12 @@ function buildTerminal(q,getCode,o){
       t.engine==='ai'?h('div',{class:'hint',style:'margin:0',text:'Outputs were predicted by '+provName()+', not produced by a real run.'+(t.note?' '+t.note:'')}):(t.note?h('div',{class:'hint',style:'margin:0',text:t.note}):null)));
     t.items.forEach((x,i)=>{
       const badge=h('span',{class:'badge '+(x.ok?'pass':'fail'),text:x.ok?'PASS':'FAIL'});
-      if(x.t.hidden){
+      if(x.t.hidden&&x.ok){
         body.append(h('details',{class:'tcase fixed'},h('summary',{onclick:e=>e.preventDefault()},badge,h('span',{text:'Test '+(i+1)+' · hidden'}),x.r&&x.r.timedOut?h('span',{class:'dim',text:'time limit'}):null)));
         return;
       }
       const r=x.r||{}, er=String(r.stderr||'').replace(/\s+$/,'');
-      body.append(h('details',{class:'tcase',open:!x.ok},h('summary',null,badge,h('span',{text:'Test '+(i+1)}),r.ms?h('span',{class:'dim',text:r.ms+' ms'}):null),
+      body.append(h('details',{class:'tcase',open:!x.ok},h('summary',null,badge,h('span',{text:'Test '+(i+1)+(x.t.hidden?' · was hidden':'')}),r.ms?h('span',{class:'dim',text:r.ms+' ms'}):null),
         h('div',{class:'tcase-body'},
           x.t.input.trim()?h('div',null,h('div',{class:'sec-title',text:'Input'}),h('pre',{text:x.t.input})):null,
           h('div',null,h('div',{class:'sec-title',text:'Expected output'}),h('pre',{text:x.t.expected})),
@@ -1563,6 +1556,7 @@ function buildTerminal(q,getCode,o){
     try{
       const r=await runProgram(q,getCode(),[stdin.value],{onStatus:s=>{ entry.status=s; if(st.tab==='console') render(); }});
       Object.assign(entry,r.results[0],{engine:r.engine,via:r.via,note:r.note});
+      { const mt=visibleTests(q).find(t=>cmp(t.input)===cmp(stdin.value)); if(mt) entry.exp=mt.expected; }
     }catch(e){ entry.error=e; }
     entry.pending=false; st.busy=false; render();
   }
@@ -1581,6 +1575,38 @@ function buildTerminal(q,getCode,o){
   }
   render();
   return {el,run,check,getInput:()=>stdin.value,isBusy:()=>st.busy};
+}
+
+/* ---------- HTML and CSS tests: each check is a JavaScript expression run inside the student's page ---------- */
+function webDoc(q,code,checks,token){
+  const runner='<script>(function(){var T='+JSON.stringify(checks).replace(/</g,'\\u003c')+';function go(){var out=T.map(function(c){try{return String(new Function("return ("+c+")")())}catch(e){return "ERROR: "+e.message}});parent.postMessage({qvWeb:'+JSON.stringify(token)+',results:out},"*")}if(document.readyState==="complete")setTimeout(go,60);else window.addEventListener("load",function(){setTimeout(go,60)})})()<\/script>';
+  if(kindOf(q.lang)==='css') return '<!doctype html><html><head><meta charset="utf-8"><style>body{margin:12px;font-family:system-ui,sans-serif;color:#111}</style><style>'+code+'</style></head><body>'+(q.preview||'')+runner+'</body></html>';
+  const i=code.toLowerCase().lastIndexOf('</body>');
+  return i>=0?code.slice(0,i)+runner+code.slice(i):code+runner;
+}
+function runWebChecks(q,code,tests){
+  tests=tests||q.tests;
+  return new Promise(res=>{
+    const token='w'+Math.random().toString(36).slice(2), fr=document.createElement('iframe'); let done=false, tm=0;
+    fr.setAttribute('sandbox','allow-scripts'); fr.style.cssText='position:fixed;left:-9999px;top:0;width:900px;height:700px;border:0;visibility:hidden';
+    const finish=vals=>{ if(done) return; done=true; window.removeEventListener('message',on); clearTimeout(tm); fr.remove();
+      res(tests.map((t,i)=>{ const a=String(vals&&vals[i]!=null?vals[i]:'ERROR: the page did not answer'); return {t,actual:a,ok:!a.startsWith('ERROR')&&cmp(a)===cmp(t.expected)}; })); };
+    const on=e=>{ if(e.source===fr.contentWindow&&e.data&&e.data.qvWeb===token) finish(e.data.results); };
+    window.addEventListener('message',on); tm=setTimeout(()=>finish(null),6000);
+    fr.srcdoc=webDoc(q,code,tests.map(t=>t.check||'0/0=='),token); document.body.append(fr);
+  });
+}
+function webResultsView(items){
+  const p=items.filter(x=>x.ok).length, all=p===items.length;
+  const box=h('div',null,h('div',{class:'tsum'},h('strong',{class:all?'ok':'',text:all?'All '+items.length+' checks passed':p+' of '+items.length+' checks passed'}),
+    h('div',{class:'bar'},h('span',{style:'width:'+(items.length?p/items.length*100:0)+'%;background:'+(all?'var(--good)':'var(--warn)')}))));
+  items.forEach((x,i)=>{
+    const badge=h('span',{class:'badge '+(x.ok?'pass':'fail'),text:x.ok?'PASS':'FAIL'});
+    if(x.t.hidden&&x.ok){ box.append(h('details',{class:'tcase fixed'},h('summary',{onclick:e=>e.preventDefault()},badge,h('span',{text:'Check '+(i+1)+' · hidden'})))); return; }
+    box.append(h('details',{class:'tcase',open:!x.ok},h('summary',null,badge,h('span',{text:'Check '+(i+1)+(x.t.input?': '+x.t.input:'')+(x.t.hidden?' · was hidden':'')})),
+      h('div',{class:'tcase-body'},h('div',null,h('div',{class:'sec-title',text:'Expected'}),h('pre',{text:x.t.expected})),h('div',null,h('div',{class:'sec-title',text:'Your result'}),h('pre',{text:x.actual})))));
+  });
+  return box;
 }
 
 /* ---------- workspace: editor, buttons, terminal, AI tools ---------- */
@@ -1603,6 +1629,15 @@ function buildWorkspace(q,o){
   if(visual){
     prev=h('div',{class:'out',hidden:true});
     runBtn=h('button',{class:'btn primary',type:'button',onclick:()=>renderPreview(prev,q,ta.value)},'Preview');
+    if(o.allowTests&&q.tests.some(t=>t.check)) chkBtn=h('button',{class:'btn',type:'button',title:'Runs every check on your page, including hidden ones',onclick:async()=>{
+      chkBtn.disabled=true; renderPreview(prev,q,ta.value);
+      const slot=h('div',{class:'tm'},h('div',{class:'tm-body'},h('div',{class:'line cmd',text:'Checking your page…'}))); prev.append(slot);
+      try{
+        const items=await runWebChecks(q,ta.value); slot.textContent=''; slot.append(h('div',{class:'tm-body'},webResultsView(items)));
+        const pc=items.filter(x=>x.ok).length; if(pc===items.length&&o.onPass) o.onPass(); toast(pc===items.length?'Submitted. All '+pc+' checks passed.':'Submitted. '+pc+' of '+items.length+' checks passed.');
+      }catch(e){ slot.textContent=''; slot.append(h('div',{class:'tm-body'},h('div',{class:'line terr',text:'Could not run the checks.'}))); }
+      chkBtn.disabled=false;
+    }},'Submit');
   } else {
     term=buildTerminal(q,()=>ta.value,{tests:!!o.allowTests,onPass:o.onPass,onBusy:b=>{ if(runBtn) runBtn.disabled=b; if(chkBtn) chkBtn.disabled=b; }});
     runBtn=h('button',{class:'btn primary',type:'button',title:'Ctrl or Cmd + Enter',onclick:()=>term.run()},'Run code');
@@ -1632,6 +1667,7 @@ function reviewPrompt(q,code){
    +'Reply with JSON only: {"verdict":"correct"|"partial"|"wrong","feedback":string (2 to 4 plain sentences),"issues":[string] (short, empty if none)}';
 }
 const TESTS_RULE='"tests" is an array of 4 to 7 test cases for a program that reads standard input and prints its result: {"input":string (what is typed into the program, empty if it reads nothing),"expected":string (exact output),"hidden":boolean}. Include edge cases where they apply (smallest input, zero, negative numbers, duplicates, largest input). Mark the extra and edge cases hidden:true and the first one or two hidden:false. Work out every expected output by really tracing the reference solution.';
+const WEB_TESTS_RULE='"tests" is an array of 4 or 5 checks run inside the finished page: {"input":string (a short description of what is checked, for example Colour of the h1 heading),"expected":string (the exact expected value),"hidden":boolean,"check":string (ONE JavaScript expression that runs inside the page and returns the actual value as a string)}. Examples: getComputedStyle(document.querySelector("h1")).color with expected rgb(255, 0, 0); String(document.querySelectorAll("li").length) with expected 3; document.querySelector("h1").textContent.trim() with expected Hello; String(!!document.querySelector("nav a")) with expected true. Computed colours always look like rgb(r, g, b) and lengths like 16px. Every check must pass for your reference solution. Mark the two most important checks hidden:false and the rest hidden:true.';
 function improvePrompt(d){
   return 'You are an experienced programming teacher preparing exam practice material. A student pasted a question copied from an assignment, a PDF or a website. It may be rough, badly formatted or incomplete, and may contain typos, question numbers, marks or other noise.\n'
    +'Language chosen by the student: '+(d.lang||'(not chosen, detect it)')+'\nQuestion as pasted:\n'+d.statement+'\n'
@@ -1640,18 +1676,18 @@ function improvePrompt(d){
    +'1. Rewrite the question text in clear, correct English. Fix spelling and grammar, remove numbering, marks and other noise, and keep every requirement and every name (function, class, variable) that the original asks for. Do not change what is asked. If something essential is missing, make the smallest sensible assumption and state it in the text. If several separate questions were pasted, work on the first one only.\n'
    +'2. Structure the statement in this order, with a blank line between parts: a short problem description; then **Input** (the input format); **Output** (the output format); **Constraints** (a "- " bullet list, only when useful); and nothing else. Do not write sample input or output in the statement, because the app shows examples automatically from the first two visible test cases. Leave out the parts that do not apply: for theory, HTML, CSS or no-input questions, describe the task and its requirements as a "- " bullet list instead. Labels are bold with double asterisks, code goes in ``` fences, inline code uses single backticks.\n'
    +'3. Phrase it as a program that reads standard input and prints its result whenever that makes sense, so that several test cases can be used.\n'
-   +'4. Write a correct, clean, readable reference solution with short comments that handles the edge cases.\n'
+   +'4. Write a correct, clean, readable reference solution with short comments that handles the edge cases. It must be the starter boilerplate with the comment Write your solution here replaced by working code, it must compile and run with no error, it must read the input exactly the way the boilerplate does, and it must print exactly the expected output of every test. For HTML and CSS the starter is the page or stylesheet skeleton with the comment Write your solution here (include any element or selector the question names, but not the solution) and the solution is the complete HTML or CSS that passes every check.\n'
    +'5. Explain the solution in 3 to 6 plain sentences: the idea, the steps and the time complexity.\n'
    +'6. Give 3 or 4 hints from gentle to strong that never reveal the full answer.\n'
    +'7. Choose an honest difficulty, a short topic and a proper title of at most 8 words (never just Question 1).\n'
    +'8. Create the test cases.\n'
    +'9. If the pasted text is a multiple-choice question (it lists options such as A, B, C, D or 1, 2, 3, 4), set "kind" to "mcq" and format it like this: the question text first, then a blank line, then every option as a "- " bullet line that starts with its letter, for example "- A) text", in the original order and wording (fix only spelling). Never add, remove or reorder options. Put the correct option in "solution" as "Correct answer: B) text" (list every correct letter if more than one is correct, and work it out if the original does not say), explain in "explanation" why it is right and briefly why the others are wrong, give 2 gentle hints, and leave "starter" and "tests" empty. Points 3 and 4 do not apply to multiple-choice questions. For every other question set "kind" to "code", or to "theory" when no code is expected.\n'
    +'Reply with JSON only using these keys: {"language":string,"title":string,"statement":string,"kind":"code"|"mcq"|"theory","difficulty":"easy"|"medium"|"hard","topic":string (2 or 3 words),"starter":string (boilerplate only, written for this exact question: all imports or includes, the main wrapper, which is public class Main for Java, any class or method signature the question asks for, and the code that reads the input in the format described; put the comment Write your solution here, in the comment style of the language such as // Write your solution here, exactly where the student writes code; never include any part of the solution; empty for multiple-choice and theory questions),"solution":string,"explanation":string,"hints":[string],"tests":[...],"preview":string (only for CSS questions: the HTML the CSS is applied to, else empty),"note":string (one short sentence about an assumption you made or something unclear in the original, else empty)}\n'
-   +TESTS_RULE+' For HTML, CSS, multiple-choice and theory questions leave "tests" empty. Use real newlines inside strings.';
+   +TESTS_RULE+' For HTML and CSS questions ignore that rule and use this one instead: '+WEB_TESTS_RULE+' For multiple-choice and theory questions leave "tests" empty. Use real newlines inside strings.';
 }
 function testsPrompt(d){
   return 'You write test cases for a programming exercise.\nLanguage: '+d.lang+'\nQuestion:\n'+d.statement+'\n'+(d.solution?'\nReference solution:\n'+d.solution+'\n':'')
-   +'\nReply with JSON only: {"tests":[...]}. '+TESTS_RULE;
+   +'\nReply with JSON only: {"tests":[...]}. '+(isWeb(d.lang)?WEB_TESTS_RULE:TESTS_RULE);
 }
 const VERDICT={correct:'Correct',partial:'Partly right',wrong:'Wrong'};
 function termView(lang,r){
@@ -1933,6 +1969,13 @@ function gotoQ(id){ ui.qid=id; ui.hintN=0; ui.solOpen=false; ui.pLang=null; ui.s
 function stepQ(d){ const i=ui.plist.indexOf(ui.qid), n=i+d; if(n<0||n>=ui.plist.length) return; save(); gotoQ(ui.plist[n]); }
 function examplesView(q){
   const vt=visibleTests(q).slice(0,3); if(!vt.length) return null;
+  if(isWeb(q.lang)&&q.tests.some(t=>t.check)){
+    const wb=h('div',{class:'examples'},h('div',{class:'sec-title',style:'margin:0',text:'What will be checked'}));
+    vt.forEach(t=>wb.append(h('div',{class:'ex'},h('div',null,h('div',{class:'sec-title',text:'Check'}),h('pre',{class:'codeblock small'},h('code',{text:t.input||'(no description)'}))),h('div',null,h('div',{class:'sec-title',text:'Expected'}),h('pre',{class:'codeblock small'},h('code',{text:t.expected}))))));
+    const hd=q.tests.length-vt.length;
+    wb.append(h('p',{class:'hint',style:'margin:0',text:'Submit runs '+q.tests.length+' check'+(q.tests.length===1?'':'s')+(hd?', including '+hd+' hidden.':'.')}));
+    return wb;
+  }
   const hid=q.tests.length-visibleTests(q).length;
   const box=h('div',{class:'examples'},h('div',{class:'sec-title',style:'margin:0',text:'Examples'}));
   vt.forEach(t=>box.append(h('div',{class:'ex'},
@@ -1993,7 +2036,7 @@ function renderPractice(){
   function drawWs(){
     const lang=ui.pLang, same=sameLang(lang,q.lang), qv=viewQ(q,lang), k=langKey(lang);
     wsBody.textContent='';
-    wsBody.append(buildWorkspace(qv,{id:'editor',value:same?(q.draft!==null?q.draft:q.starter):(typeof q.drafts[k]==='string'?q.drafts[k]:qv.starter),allowTests:true,ai:true,
+    wsBody.append(buildWorkspace(qv,{id:'editor',value:same?(q.draft!==null?q.draft:qv.starter):(typeof q.drafts[k]==='string'?q.drafts[k]:qv.starter),allowTests:true,ai:true,
       onInput:v=>{ if(same) q.draft=v; else q.drafts[k]=v; saveSoon(); },
       onPass:()=>{ if(!q.solved){ q.solved=true; save(); sync(); toast('Marked as solved'); } }}));
   }
@@ -2049,14 +2092,16 @@ function fillFolderSelect(sel){
   s.value=sel&&folderById(sel)?sel:'';
 }
 function testRow(t){
-  t=t||{input:'',expected:'',hidden:false};
+  t=t||{input:'',expected:'',hidden:false,check:''};
+  const web=isWeb($('#f-lang').value)||!!t.check;
   const row=h('div',{class:'trow2'});
-  const inp=h('textarea',{rows:'2','aria-label':'Test input',placeholder:'Input given to the program',spellcheck:'false'}); inp.value=t.input;
-  const exp=h('textarea',{rows:'2','aria-label':'Expected output',placeholder:'Exact expected output',spellcheck:'false'}); exp.value=t.expected;
+  const inp=h('textarea',{rows:'2','aria-label':web?'What is checked':'Test input',placeholder:web?'Short description, for example Colour of the h1 heading':'Input given to the program',spellcheck:'false'}); inp.value=t.input;
+  const exp=h('textarea',{rows:'2','aria-label':'Expected output',placeholder:web?'Exact expected value':'Exact expected output',spellcheck:'false'}); exp.value=t.expected;
+  const chk=web?h('textarea',{rows:'2','aria-label':'Check expression',placeholder:'One JavaScript expression that returns the value, for example getComputedStyle(document.querySelector("h1")).color',spellcheck:'false'}):null; if(chk) chk.value=t.check||'';
   const hid=h('input',{type:'checkbox'}); hid.checked=!!t.hidden; const idn='th-'+uid(); hid.id=idn;
-  row.append(h('div',null,h('div',{class:'sec-title',text:'Input'}),inp),h('div',null,h('div',{class:'sec-title',text:'Expected output'}),exp),
+  row.append(h('div',null,h('div',{class:'sec-title',text:web?'What is checked':'Input'}),inp,chk?h('div',{class:'sec-title',style:'margin-top:8px',text:'Check (JavaScript)'}):null,chk),h('div',null,h('div',{class:'sec-title',text:web?'Expected value':'Expected output'}),exp),
     h('div',{class:'side-actions'},h('div',{class:'checkrow'},hid,h('label',{for:idn,text:'Hidden'})),h('button',{class:'btn ghost sm',type:'button',onclick:()=>row.remove()},'Remove')));
-  row._get=()=>({input:inp.value.replace(/\s+$/,''),expected:exp.value.replace(/\s+$/,''),hidden:hid.checked}); row._inp=inp; row._exp=exp;
+  row._get=()=>({input:inp.value.replace(/\s+$/,''),expected:exp.value.replace(/\s+$/,''),hidden:hid.checked,check:chk?chk.value.trim():''}); row._inp=inp; row._exp=exp;
   return row;
 }
 const readTests=()=>$$('#tests-box .trow2').map(r=>r._get());
@@ -2065,6 +2110,13 @@ async function fillTestOutputs(){
   const msg=$('#tests-msg'), btn=$('#btn-filltests'), sol=$('#f-solution').value, lang=$('#f-lang').value.trim();
   if(!sol.trim()){ msg.textContent='Add a solution first. Open "Solution, starter code and hints" above.'; return; }
   if(!lang){ msg.textContent='Choose the language first.'; return; }
+  if(isWeb(lang)){
+    const wr=$$('#tests-box .trow2'); if(!wr.length){ msg.textContent='Add some checks first.'; return; }
+    btn.disabled=true; msg.textContent='Running your solution in a hidden page…';
+    try{ const items=await runWebChecks({lang,preview:$('#f-preview').value},sol,wr.map(x=>x._get())); wr.forEach((x,i)=>{ if(!items[i].actual.startsWith('ERROR')) x._exp.value=items[i].actual; }); msg.textContent='Expected values came from really running your solution.'; }
+    catch(e){ msg.textContent='Could not run the checks.'; }
+    btn.disabled=false; return;
+  }
   let rows=$$('#tests-box .trow2'); if(!rows.length){ $('#tests-box').append(testRow()); rows=$$('#tests-box .trow2'); }
   btn.disabled=true; msg.textContent='Running your solution…';
   try{
@@ -2132,6 +2184,38 @@ function saveForm(more){
   goBank(); toast('Saved to your vault');
 }
 let aiUndo=null;
+/* runs the AI's solution against its own tests so the expected outputs are real and the solution has no error */
+async function verifyGenerated(kd,msg){
+  const lang=$('#f-lang').value.trim(), sol=$('#f-solution').value, notes=[];
+  if(kd==='mcq'||kd==='theory'||!sol.trim()) return notes;
+  const rows=$$('#tests-box .trow2'); if(!rows.length) return notes;
+  msg.textContent='Checking the solution by really running it…';
+  if(isWeb(lang)){
+    const items=await runWebChecks({lang,preview:$('#f-preview').value},sol,rows.map(x=>x._get()));
+    let fixed=0, dropped=0;
+    items.forEach((x,i)=>{ if(x.ok) return; if(x.actual.startsWith('ERROR')||!x.actual.trim()){ rows[i].remove(); dropped++; } else { rows[i]._exp.value=x.actual; fixed++; } });
+    notes.push(fixed||dropped?'The checks were tested on the solution and '+(fixed?fixed+' expected value'+(fixed===1?' was':'s were')+' corrected':'')+(fixed&&dropped?' and ':'')+(dropped?dropped+' broken check'+(dropped===1?' was':'s were')+' removed':'')+'.':'The solution passes every check.');
+    return notes;
+  }
+  let r;
+  try{ r=await runProgram({lang},sol,rows.map(x=>x._inp.value),{onStatus:s=>{ msg.textContent=s; }}); }
+  catch(e){ return ['The solution could not be run to double-check the tests.']; }
+  if(r.engine==='ai') return ['The outputs were predicted by AI, not run for real, so use Fill outputs by running my solution to double-check them.'];
+  const bad=r.results.find(o=>o&&(o.crashed||o.timedOut));
+  if(bad){
+    try{
+      const fx=await askAI('The reference solution below failed when it was run.\nLanguage: '+lang+'\nQuestion:\n'+$('#f-statement').value+'\nCode:\n'+sol+'\nError:\n'+String(bad.stderr||(bad.timedOut?'time limit exceeded':'')).slice(0,800)+'\nFix it. Keep the same input and output format. Reply with JSON only: {"solution":string}');
+      if(!fx||typeof fx.solution!=='string'||!fx.solution.trim()) throw new Error('no fix');
+      const r2=await runProgram({lang},fx.solution,rows.map(x=>x._inp.value));
+      if(r2.results.some(o=>o&&(o.crashed||o.timedOut))) return ['The solution still shows an error when it is run. Open it and fix it before saving.'];
+      $('#f-solution').value=fx.solution.replace(/\s+$/,''); r=r2; notes.push('The first solution had an error, so it was fixed and run again.');
+    }catch(e){ return ['The solution shows an error when it is run. Open it and fix it before saving.']; }
+  }
+  let fixed=0;
+  rows.forEach((row,i)=>{ const out=String((r.results[i]||{}).stdout||'').replace(/\s+$/,''); if(cmp(out)!==cmp(row._exp.value)){ row._exp.value=out; fixed++; } });
+  notes.push(fixed?fixed+' expected output'+(fixed===1?' was':'s were')+' corrected by really running the solution.':'The solution runs with no error and matches every test.');
+  return notes;
+}
 async function improveForm(){
   const msg=$('#ai-form-msg'), btn=$('#btn-ai-improve'), statement=$('#f-statement').value.trim();
   if(!statement){ msg.textContent='Paste the question text first.'; $('#f-statement').focus(); return; }
@@ -2149,7 +2233,12 @@ async function improveForm(){
     { const kd=String(r.kind||'').toLowerCase(); if(!$('#f-starter').value.trim()&&kd!=='mcq'&&kd!=='theory') $('#f-starter').value=boilerplate($('#f-lang').value); }
     const tl=normTests(r.tests); if(tl.length){ writeTests(tl); $('#f-testsd').open=true; }
     $('#f-extras').open=true; $('#btn-ai-undo').hidden=false;
-    msg.textContent='Done. Boilerplate, hints and test cases are ready, and the solution stays hidden from students until they ask for it. '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Read everything, fix anything that looks wrong, then save. Use Fill outputs by running my solution to double check the test outputs.';
+    const kd=String(r.kind||'').toLowerCase();
+    if(kd!=='mcq'&&kd!=='theory'&&$('#tests-box').children.length<4&&$('#f-solution').value.trim()){
+      try{ const t2=await askAI(testsPrompt({lang:$('#f-lang').value.trim(),statement:$('#f-statement').value,solution:$('#f-solution').value})); const more=normTests(t2.tests); if(more.length>$('#tests-box').children.length){ writeTests(more); $('#f-testsd').open=true; } }catch(_){}
+    }
+    let notes=[]; try{ notes=await verifyGenerated(kd,msg); }catch(_){ notes=['The solution could not be double-checked.']; }
+    msg.textContent='Done. '+notes.join(' ')+' '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Boilerplate, hints and test cases are ready, and the solution stays hidden until a student asks for it. Read everything, then save.';
   }catch(e){ aiFail(msg,e); }
   btn.disabled=false;
 }
@@ -2359,7 +2448,7 @@ async function finishRun(){
     const q=byId(id); if(!q) continue;
     if(!isAnswered(ex,q)){ ex.grades[id]='wrong'; ex.auto[id]='skipped'; continue; }
     const qa=viewQ(q,qLang(ex,q));
-    if(q.tests.length&&engineFor(qa.lang)!=='ai'){
+    if(q.tests.length&&!isWeb(qa.lang)&&engineFor(qa.lang)!=='ai'){
       try{
         const r=await runProgram(qa,answerOf(ex,q),q.tests.map(t=>t.input));
         const oks=q.tests.map((t,k)=>judge(t,r.results[k])), p=oks.filter(Boolean).length;
