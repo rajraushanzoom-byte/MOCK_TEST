@@ -147,6 +147,9 @@ label,.lbl{display:block;font-weight:500;font-size:13px;margin-bottom:6px}
 .star{flex:none;width:52px;background:none;border:0;border-left:1px solid var(--line);font-size:20px;color:var(--muted);cursor:pointer;border-radius:0 12px 12px 0}
 .star:hover{color:var(--ink);background:var(--raise)}
 .star.on{color:#000;background:#FFD60A}
+.qrow .star{border-radius:0}
+.qdel{flex:none;width:52px;display:grid;place-items:center;background:none;border:0;border-left:1px solid var(--line);color:var(--muted);cursor:pointer;border-radius:0 12px 12px 0}
+.qdel:hover{color:var(--bad);background:var(--raise)}
 .empty{display:grid;gap:10px;justify-items:start;padding:28px;border:1px dashed var(--line);border-radius:12px;background:var(--surface)}
 .empty h3{font-size:20px}
 .panel{margin-top:28px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
@@ -755,22 +758,22 @@ function stripSamples(){
 }
 function boilerplate(lang){
   const T={
-    python:'# Read input with input() and print the answer with print()\n\n\ndef main():\n    # write your code here\n    pass\n\n\nif __name__ == "__main__":\n    main()\n',
-    java:'import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // write your code here\n    }\n}\n',
-    'c++':'#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    // write your code here\n    return 0;\n}\n',
-    c:'#include <stdio.h>\n\nint main(void) {\n    // write your code here\n    return 0;\n}\n',
-    javascript:'const lines = require("fs").readFileSync(0, "utf8").split("\\n");\n\n// write your code here\n',
-    typescript:'const lines: string[] = require("fs").readFileSync(0, "utf8").split("\\n");\n\n// write your code here\n',
-    'c#':'using System;\n\nclass Program {\n    static void Main() {\n        // write your code here\n    }\n}\n',
-    go:'package main\n\nimport (\n    "bufio"\n    "fmt"\n    "os"\n)\n\nfunc main() {\n    reader := bufio.NewReader(os.Stdin)\n    _ = reader\n    _ = fmt.Sprint()\n    // write your code here\n}\n',
-    rust:'use std::io::{self, Read};\n\nfn main() {\n    let mut input = String::new();\n    io::stdin().read_to_string(&mut input).unwrap();\n    // write your code here\n}\n',
-    php:'<?php\n$input = trim(stream_get_contents(STDIN));\n// write your code here\n',
-    ruby:'input = STDIN.read\n# write your code here\n',
-    kotlin:'fun main() {\n    // write your code here\n}\n',
-    swift:'import Foundation\n\n// write your code here\n',
-    html:'<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <title>Page</title>\n</head>\n<body>\n  <!-- write your HTML here -->\n</body>\n</html>\n',
-    css:'/* write your CSS here */\n',
-    sql:'-- write your query here\n'
+    python:'# Read input with input() and print the answer with print()\n\n\ndef main():\n    # Write your solution here\n    pass\n\n\nif __name__ == "__main__":\n    main()\n',
+    java:'import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Write your solution here\n    }\n}\n',
+    'c++':'#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    // Write your solution here\n    return 0;\n}\n',
+    c:'#include <stdio.h>\n\nint main(void) {\n    // Write your solution here\n    return 0;\n}\n',
+    javascript:'const lines = require("fs").readFileSync(0, "utf8").split("\\n");\n\n// Write your solution here\n',
+    typescript:'const lines: string[] = require("fs").readFileSync(0, "utf8").split("\\n");\n\n// Write your solution here\n',
+    'c#':'using System;\n\nclass Program {\n    static void Main() {\n        // Write your solution here\n    }\n}\n',
+    go:'package main\n\nimport (\n    "bufio"\n    "fmt"\n    "os"\n)\n\nfunc main() {\n    reader := bufio.NewReader(os.Stdin)\n    _ = reader\n    _ = fmt.Sprint()\n    // Write your solution here\n}\n',
+    rust:'use std::io::{self, Read};\n\nfn main() {\n    let mut input = String::new();\n    io::stdin().read_to_string(&mut input).unwrap();\n    // Write your solution here\n}\n',
+    php:'<?php\n$input = trim(stream_get_contents(STDIN));\n// Write your solution here\n',
+    ruby:'input = STDIN.read\n# Write your solution here\n',
+    kotlin:'fun main() {\n    // Write your solution here\n}\n',
+    swift:'import Foundation\n\n// Write your solution here\n',
+    html:'<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <title>Page</title>\n</head>\n<body>\n  <!-- Write your solution here -->\n</body>\n</html>\n',
+    css:'/* Write your solution here */\n',
+    sql:'-- Write your solution here\n'
   };
   return T[langKey(lang)]||'';
 }
@@ -1642,8 +1645,9 @@ function improvePrompt(d){
    +'6. Give 3 or 4 hints from gentle to strong that never reveal the full answer.\n'
    +'7. Choose an honest difficulty, a short topic and a proper title of at most 8 words (never just Question 1).\n'
    +'8. Create the test cases.\n'
-   +'Reply with JSON only using these keys: {"language":string,"title":string,"statement":string,"difficulty":"easy"|"medium"|"hard","topic":string (2 or 3 words),"starter":string (complete boilerplate for the chosen language: all imports or includes, the main wrapper, which is public class Main for Java, and code that reads the input in the format described, with a comment where the student writes the answer; never include the solution; empty only for a pure theory question),"solution":string,"explanation":string,"hints":[string],"tests":[...],"preview":string (only for CSS questions: the HTML the CSS is applied to, else empty),"note":string (one short sentence about an assumption you made or something unclear in the original, else empty)}\n'
-   +TESTS_RULE+' For HTML or CSS questions leave "tests" empty. Use real newlines inside strings.';
+   +'9. If the pasted text is a multiple-choice question (it lists options such as A, B, C, D or 1, 2, 3, 4), set "kind" to "mcq" and format it like this: the question text first, then a blank line, then every option as a "- " bullet line that starts with its letter, for example "- A) text", in the original order and wording (fix only spelling). Never add, remove or reorder options. Put the correct option in "solution" as "Correct answer: B) text" (list every correct letter if more than one is correct, and work it out if the original does not say), explain in "explanation" why it is right and briefly why the others are wrong, give 2 gentle hints, and leave "starter" and "tests" empty. Points 3 and 4 do not apply to multiple-choice questions. For every other question set "kind" to "code", or to "theory" when no code is expected.\n'
+   +'Reply with JSON only using these keys: {"language":string,"title":string,"statement":string,"kind":"code"|"mcq"|"theory","difficulty":"easy"|"medium"|"hard","topic":string (2 or 3 words),"starter":string (boilerplate only, written for this exact question: all imports or includes, the main wrapper, which is public class Main for Java, any class or method signature the question asks for, and the code that reads the input in the format described; put the comment Write your solution here, in the comment style of the language such as // Write your solution here, exactly where the student writes code; never include any part of the solution; empty for multiple-choice and theory questions),"solution":string,"explanation":string,"hints":[string],"tests":[...],"preview":string (only for CSS questions: the HTML the CSS is applied to, else empty),"note":string (one short sentence about an assumption you made or something unclear in the original, else empty)}\n'
+   +TESTS_RULE+' For HTML, CSS, multiple-choice and theory questions leave "tests" empty. Use real newlines inside strings.';
 }
 function testsPrompt(d){
   return 'You write test cases for a programming exercise.\nLanguage: '+d.lang+'\nQuestion:\n'+d.statement+'\n'+(d.solution?'\nReference solution:\n'+d.solution+'\n':'')
@@ -1872,7 +1876,11 @@ function renderBank(){
           q.solved?h('span',{class:'pill solved',text:'Solved'}):(q.lastResult==='wrong'||q.lastResult==='partial')?h('span',{class:'pill missed',text:'Missed in exam'}):null,
           q.sample?h('span',{class:'pill sample',text:'Sample'}):null),
         trail?h('span',{class:'trail',text:trail}):null),
-      h('button',{class:'star'+(q.important?' on':''),type:'button','aria-pressed':String(q.important),title:'Mark as important','aria-label':(q.important?'Unmark':'Mark')+' as important: '+titleOf(q),onclick:()=>{ q.important=!q.important; save(); renderBank(); }},'★')));
+      h('button',{class:'star'+(q.important?' on':''),type:'button','aria-pressed':String(q.important),title:'Mark as important','aria-label':(q.important?'Unmark':'Mark')+' as important: '+titleOf(q),onclick:()=>{ q.important=!q.important; save(); renderBank(); }},'★'),
+      (()=>{ const d=h('button',{class:'qdel',type:'button',title:'Delete this question','aria-label':'Delete question: '+titleOf(q),onclick:async()=>{
+          if(await modal({title:'Delete this question?',body:'"'+titleOf(q)+'" will be removed from your vault. This cannot be undone.',ok:'Delete',cancel:'Keep it',danger:true})){ S.questions=S.questions.filter(x=>x.id!==q.id); save(); renderBank(); toast('Question deleted'); }
+        }});
+        d.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>'; return d; })()));
   });
 }
 async function removeSamples(){
@@ -2108,7 +2116,7 @@ function saveForm(more){
   for(const x of rows){ if(!x.t.expected.trim()){ $('#f-testsd').open=true; return formErr('Test case '+(x.i+1)+' needs an expected output.','f-error'); } }
   $('#f-error').textContent='';
   const data={lang,folder:$('#f-folder').value||null,title:$('#f-title').value.trim(),diff:$('#f-diff').value,topic:$('#f-topic').value.trim(),statement,
-    starter:$('#f-starter').value.replace(/\s+$/,'')||boilerplate(lang),solution:$('#f-solution').value.replace(/\s+$/,''),explanation:$('#f-explain').value.trim(),
+    starter:$('#f-starter').value.replace(/\s+$/,'')||(rows.length?boilerplate(lang):''),solution:$('#f-solution').value.replace(/\s+$/,''),explanation:$('#f-explain').value.trim(),
     hints:$('#f-hints').value.split('\n').map(s=>s.trim()).filter(Boolean),tests:normTests(rows.map(x=>x.t)),
     preview:$('#f-preview').value.replace(/\s+$/,''),important:$('#f-important').checked};
   let q;
@@ -2138,7 +2146,7 @@ async function improveForm(){
     set('f-explain',r.explanation); set('f-preview',r.preview);
     if(['easy','medium','hard'].includes(r.difficulty)) $('#f-diff').value=r.difficulty;
     if(Array.isArray(r.hints)&&r.hints.length) $('#f-hints').value=r.hints.map(String).join('\n');
-    if(!$('#f-starter').value.trim()) $('#f-starter').value=boilerplate($('#f-lang').value);
+    { const kd=String(r.kind||'').toLowerCase(); if(!$('#f-starter').value.trim()&&kd!=='mcq'&&kd!=='theory') $('#f-starter').value=boilerplate($('#f-lang').value); }
     const tl=normTests(r.tests); if(tl.length){ writeTests(tl); $('#f-testsd').open=true; }
     $('#f-extras').open=true; $('#btn-ai-undo').hidden=false;
     msg.textContent='Done. Boilerplate, hints and test cases are ready, and the solution stays hidden from students until they ask for it. '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Read everything, fix anything that looks wrong, then save. Use Fill outputs by running my solution to double check the test outputs.';
