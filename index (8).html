@@ -59,6 +59,7 @@ a{color:var(--accent)}
 .gstep{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface2);display:grid;gap:8px;align-content:start}
 .gstep b{font-size:15px}
 .guide-steps[hidden]{display:none}
+.rich ul{margin:6px 0 6px 20px;padding:0}.rich li{margin:3px 0}.rich strong{font-weight:700}
 .gstep.done{border-color:color-mix(in srgb,var(--good) 55%,var(--line))}
 .gnum.ok{background:var(--good)}
 .chev{display:inline-flex;transition:transform .2s ease}
@@ -458,7 +459,8 @@ code.inline{font:500 .9em var(--f-mono);background:var(--raise);border:1px solid
         </div>
       </details>
       <div class="aicard">
-        <div><strong>Let AI finish this question</strong><p class="hint">Paste the rough question and pick the language. AI rewrites it clearly and fills in the solution, explanation, hints, starter code and test cases. You review everything before saving.</p></div>
+        <div><strong>Let AI finish this question</strong><p class="hint">Paste the rough question and pick the language. AI rewrites it as a proper exam question (title, clear description, input, output and constraints) and fills in the difficulty, topic, solution, explanation, hints, starter code and test cases. You review everything before saving.</p></div>
+        <div class="checkrow"><input type="checkbox" id="f-auto" checked><label for="f-auto">Improve automatically when I paste a new question</label></div>
         <div class="row"><button type="button" class="btn" id="btn-ai-improve">Improve with AI</button><button type="button" class="btn ghost" id="btn-ai-undo" hidden>Undo AI changes</button><span class="dim" id="ai-form-msg" role="status"></span></div>
       </div>
       <div class="err" id="f-error" role="alert"></div>
@@ -751,6 +753,27 @@ function stripSamples(){
   if(S.lastFolder&&!ids.has(S.lastFolder)) S.lastFolder=null;
   return before!==S.questions.length+S.folders.length;
 }
+function boilerplate(lang){
+  const T={
+    python:'# Read input with input() and print the answer with print()\n\n\ndef main():\n    # write your code here\n    pass\n\n\nif __name__ == "__main__":\n    main()\n',
+    java:'import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // write your code here\n    }\n}\n',
+    'c++':'#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    // write your code here\n    return 0;\n}\n',
+    c:'#include <stdio.h>\n\nint main(void) {\n    // write your code here\n    return 0;\n}\n',
+    javascript:'const lines = require("fs").readFileSync(0, "utf8").split("\\n");\n\n// write your code here\n',
+    typescript:'const lines: string[] = require("fs").readFileSync(0, "utf8").split("\\n");\n\n// write your code here\n',
+    'c#':'using System;\n\nclass Program {\n    static void Main() {\n        // write your code here\n    }\n}\n',
+    go:'package main\n\nimport (\n    "bufio"\n    "fmt"\n    "os"\n)\n\nfunc main() {\n    reader := bufio.NewReader(os.Stdin)\n    _ = reader\n    _ = fmt.Sprint()\n    // write your code here\n}\n',
+    rust:'use std::io::{self, Read};\n\nfn main() {\n    let mut input = String::new();\n    io::stdin().read_to_string(&mut input).unwrap();\n    // write your code here\n}\n',
+    php:'<?php\n$input = trim(stream_get_contents(STDIN));\n// write your code here\n',
+    ruby:'input = STDIN.read\n# write your code here\n',
+    kotlin:'fun main() {\n    // write your code here\n}\n',
+    swift:'import Foundation\n\n// write your code here\n',
+    html:'<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <title>Page</title>\n</head>\n<body>\n  <!-- write your HTML here -->\n</body>\n</html>\n',
+    css:'/* write your CSS here */\n',
+    sql:'-- write your query here\n'
+  };
+  return T[langKey(lang)]||'';
+}
 function migrateOld(oldQuestions){
   const rootFor={}; const folders=[]; let t=Date.now()-1000000;
   const qs=oldQuestions.map(norm);
@@ -784,6 +807,14 @@ function codeBlock(text,lang,cls){
   const pre=h('pre',{class:'codeblock'+(cls?' '+cls:'')}); const code=document.createElement('code');
   code.innerHTML=highlight(String(text||''),lang||''); pre.append(code); return pre;
 }
+function inlineNodes(t){
+  const out=[], segs=String(t).split('`');
+  segs.forEach((x,j)=>{
+    if(j%2===1&&j<segs.length-1){ if(x) out.push(h('code',{class:'inline',text:x})); }
+    else{ const txt=j%2===1?'`'+x:x; txt.split(/\*\*([^*\n]+)\*\*/).forEach((y,k)=>{ if(!y) return; out.push(k%2===1?h('strong',{text:y}):document.createTextNode(y)); }); }
+  });
+  return out;
+}
 function rich(text,lang){
   const box=h('div',{class:'rich'});
   String(text||'').split(/```([\w+#.-]*)[ \t]*\n?/).forEach((p,i,arr)=>{
@@ -791,9 +822,9 @@ function rich(text,lang){
     if(i%3===2){ box.append(codeBlock(p.replace(/\n+$/,''),arr[i-1]||lang)); return; }
     p.split(/\n{2,}/).forEach(para=>{
       const t=para.replace(/^\n+|\n+$/g,''); if(!t.trim()) return;
-      const pe=h('p'); const segs=t.split('`');
-      segs.forEach((s,j)=>{ if(j%2===1&&j<segs.length-1){ if(s) pe.append(h('code',{class:'inline',text:s})); } else pe.append(document.createTextNode(j%2===1?'`'+s:s)); });
-      box.append(pe);
+      const lines=t.split('\n');
+      if(lines.length&&lines.every(l=>/^\s*[-*] +/.test(l))){ const ul=h('ul'); lines.forEach(l=>{ const li=h('li'); inlineNodes(l.replace(/^\s*[-*] +/,'')).forEach(n=>li.append(n)); ul.append(li); }); box.append(ul); }
+      else{ const pe=h('p'); inlineNodes(t).forEach(n=>pe.append(n)); box.append(pe); }
     });
   });
   return box;
@@ -1499,7 +1530,7 @@ function buildTerminal(q,getCode,o){
   }
   function renderTests(){
     const t=st.tres;
-    if(!t){ body.append(h('div',{class:'line cmd',text:'Press Check code to run every test case.'})); return; }
+    if(!t){ body.append(h('div',{class:'line cmd',text:'Press Submit to run every test case.'})); return; }
     if(t.running){ body.append(h('div',{class:'line cmd',text:t.status||'Running tests…'})); return; }
     if(t.error){ const d=h('div',{class:'line terr'}); aiFail(d,t.error); body.append(d); return; }
     const total=t.items.length, p=t.items.filter(x=>x.ok).length, all=p===total;
@@ -1533,7 +1564,7 @@ function buildTerminal(q,getCode,o){
     entry.pending=false; st.busy=false; render();
   }
   async function check(){
-    if(!hasTests){ toast('This question has no test cases yet.'); return; }
+    if(!hasTests){ toast('This question has no test cases yet. Edit it and use Improve with AI to add them.'); return; }
     if(st.busy) return;
     st.busy=true; st.tab='tests'; st.tres={running:true,status:'Running tests…'}; render();
     try{
@@ -1541,6 +1572,7 @@ function buildTerminal(q,getCode,o){
       const items=q.tests.map((t,i)=>({t,r:r.results[i],ok:judge(t,r.results[i])}));
       st.tres={items,engine:r.engine,note:r.note};
       if(items.every(x=>x.ok)&&o.onPass) o.onPass();
+      { const pc=items.filter(x=>x.ok).length; toast(pc===items.length?'Submitted. All '+pc+' tests passed.':'Submitted. '+pc+' of '+items.length+' tests passed.'); }
     }catch(e){ st.tres={error:e}; }
     st.busy=false; render();
   }
@@ -1558,6 +1590,7 @@ function renderPreview(out,q,code){
   out.append(h('div',{class:'out-head',text:'Preview'}),h('iframe',{class:'pframe',sandbox:'allow-scripts',title:'Preview of your code',srcdoc:doc}));
 }
 /* o: {id, value, onInput, allowTests, onPass, ai} */
+function addAll(el,...c){ c.filter(Boolean).forEach(x=>el.append(x)); }
 function buildWorkspace(q,o){
   const kind=kindOf(q.lang), visual=kind==='html'||kind==='css';
   const ed=codeEditor(q.lang,o.id,o.value), ta=ed.ta;
@@ -1570,9 +1603,9 @@ function buildWorkspace(q,o){
   } else {
     term=buildTerminal(q,()=>ta.value,{tests:!!o.allowTests,onPass:o.onPass,onBusy:b=>{ if(runBtn) runBtn.disabled=b; if(chkBtn) chkBtn.disabled=b; }});
     runBtn=h('button',{class:'btn primary',type:'button',title:'Ctrl or Cmd + Enter',onclick:()=>term.run()},'Run code');
-    if(o.allowTests&&q.tests.length) chkBtn=h('button',{class:'btn',type:'button',onclick:()=>term.check()},'Check code');
+    if(o.allowTests) chkBtn=h('button',{class:'btn',type:'button',title:'Runs every test case, including hidden ones',onclick:()=>term.check()},'Submit');
   }
-  bar.append(runBtn,chkBtn,
+  addAll(bar,runBtn,chkBtn,
     h('button',{class:'btn ghost',type:'button',onclick:async()=>{
       if(ta.value===q.starter) return;
       if(await modal({title:'Reset your code?',body:'Your current code will be replaced by the starter code.',ok:'Reset',cancel:'Keep my code',danger:true})){ ta.value=q.starter; ed.refresh(); o.onInput(ta.value); if(prev) prev.hidden=true; }
@@ -1595,13 +1628,21 @@ function reviewPrompt(q,code){
    +'Decide whether the student answer solves the question. A different valid approach is correct. Judge by behaviour, not by matching the reference text. Mentally run the answer on the test cases.\n'
    +'Reply with JSON only: {"verdict":"correct"|"partial"|"wrong","feedback":string (2 to 4 plain sentences),"issues":[string] (short, empty if none)}';
 }
-const TESTS_RULE='"tests" is an array of 3 to 6 test cases for a program that reads standard input and prints its result: {"input":string (what is typed into the program, empty if it reads nothing),"expected":string (exact output),"hidden":boolean}. Include one edge case. Mark the extra and edge cases hidden:true and the first one or two hidden:false. Work out every expected output by really tracing the reference solution.';
+const TESTS_RULE='"tests" is an array of 4 to 7 test cases for a program that reads standard input and prints its result: {"input":string (what is typed into the program, empty if it reads nothing),"expected":string (exact output),"hidden":boolean}. Include edge cases where they apply (smallest input, zero, negative numbers, duplicates, largest input). Mark the extra and edge cases hidden:true and the first one or two hidden:false. Work out every expected output by really tracing the reference solution.';
 function improvePrompt(d){
-  return 'You are an experienced programming teacher preparing exam practice material. A student pasted a question from an assignment. It may be rough, incomplete or have typos.\n'
+  return 'You are an experienced programming teacher preparing exam practice material. A student pasted a question copied from an assignment, a PDF or a website. It may be rough, badly formatted or incomplete, and may contain typos, question numbers, marks or other noise.\n'
    +'Language chosen by the student: '+(d.lang||'(not chosen, detect it)')+'\nQuestion as pasted:\n'+d.statement+'\n'
-   +(d.solution?'\nSolution the student has so far:\n'+d.solution+'\n':'')
-   +'\nTasks: rewrite the question so it is clear and complete without changing what is asked. When it makes sense, phrase it as a program that reads standard input and prints a result, so that several test cases can be used; otherwise leave inputs empty. Write a correct, clean reference solution, explain it briefly, give 2 to 4 hints from gentle to strong that do not give the answer away, and create test cases.\n'
-   +'Reply with JSON only using these keys: {"language":string,"title":string (max 8 words),"statement":string (put code in ``` fences and use single backticks for inline code; do not repeat the test cases in it),"difficulty":"easy"|"medium"|"hard","topic":string (2 or 3 words),"starter":string (starter code that already reads the input, with a comment where the student writes, or empty for a theory question),"solution":string,"explanation":string,"hints":[string],"tests":[...],"preview":string (only for CSS questions: the HTML the CSS is applied to, else empty)}\n'
+   +(d.solution?'\nSolution the student has so far (keep its idea if it is correct, fix it if it is not):\n'+d.solution+'\n':'')
+   +'\nImprove EVERYTHING about this question so that it reads like a proper, well-written exam question:\n'
+   +'1. Rewrite the question text in clear, correct English. Fix spelling and grammar, remove numbering, marks and other noise, and keep every requirement and every name (function, class, variable) that the original asks for. Do not change what is asked. If something essential is missing, make the smallest sensible assumption and state it in the text. If several separate questions were pasted, work on the first one only.\n'
+   +'2. Structure the statement in this order, with a blank line between parts: a short problem description; then **Input** (the input format); **Output** (the output format); **Constraints** (a "- " bullet list, only when useful); and nothing else. Do not write sample input or output in the statement, because the app shows examples automatically from the first two visible test cases. Leave out the parts that do not apply: for theory, HTML, CSS or no-input questions, describe the task and its requirements as a "- " bullet list instead. Labels are bold with double asterisks, code goes in ``` fences, inline code uses single backticks.\n'
+   +'3. Phrase it as a program that reads standard input and prints its result whenever that makes sense, so that several test cases can be used.\n'
+   +'4. Write a correct, clean, readable reference solution with short comments that handles the edge cases.\n'
+   +'5. Explain the solution in 3 to 6 plain sentences: the idea, the steps and the time complexity.\n'
+   +'6. Give 3 or 4 hints from gentle to strong that never reveal the full answer.\n'
+   +'7. Choose an honest difficulty, a short topic and a proper title of at most 8 words (never just Question 1).\n'
+   +'8. Create the test cases.\n'
+   +'Reply with JSON only using these keys: {"language":string,"title":string,"statement":string,"difficulty":"easy"|"medium"|"hard","topic":string (2 or 3 words),"starter":string (complete boilerplate for the chosen language: all imports or includes, the main wrapper, which is public class Main for Java, and code that reads the input in the format described, with a comment where the student writes the answer; never include the solution; empty only for a pure theory question),"solution":string,"explanation":string,"hints":[string],"tests":[...],"preview":string (only for CSS questions: the HTML the CSS is applied to, else empty),"note":string (one short sentence about an assumption you made or something unclear in the original, else empty)}\n'
    +TESTS_RULE+' For HTML or CSS questions leave "tests" empty. Use real newlines inside strings.';
 }
 function testsPrompt(d){
@@ -1889,7 +1930,7 @@ function examplesView(q){
   vt.forEach(t=>box.append(h('div',{class:'ex'},
     t.input.trim()?h('div',null,h('div',{class:'sec-title',text:'Input'}),h('pre',{class:'codeblock small'},h('code',{text:t.input}))):null,
     h('div',null,h('div',{class:'sec-title',text:'Output'}),h('pre',{class:'codeblock small'},h('code',{text:t.expected}))))));
-  box.append(h('p',{class:'hint',style:'margin:0',text:'Check code runs '+q.tests.length+' test'+(q.tests.length===1?'':'s')+(hid?', including '+hid+' hidden.':'.')}));
+  box.append(h('p',{class:'hint',style:'margin:0',text:'Submit runs '+q.tests.length+' test'+(q.tests.length===1?'':'s')+(hid?', including '+hid+' hidden.':'.')}));
   return box;
 }
 function renderPractice(){
@@ -2067,7 +2108,7 @@ function saveForm(more){
   for(const x of rows){ if(!x.t.expected.trim()){ $('#f-testsd').open=true; return formErr('Test case '+(x.i+1)+' needs an expected output.','f-error'); } }
   $('#f-error').textContent='';
   const data={lang,folder:$('#f-folder').value||null,title:$('#f-title').value.trim(),diff:$('#f-diff').value,topic:$('#f-topic').value.trim(),statement,
-    starter:$('#f-starter').value.replace(/\s+$/,''),solution:$('#f-solution').value.replace(/\s+$/,''),explanation:$('#f-explain').value.trim(),
+    starter:$('#f-starter').value.replace(/\s+$/,'')||boilerplate(lang),solution:$('#f-solution').value.replace(/\s+$/,''),explanation:$('#f-explain').value.trim(),
     hints:$('#f-hints').value.split('\n').map(s=>s.trim()).filter(Boolean),tests:normTests(rows.map(x=>x.t)),
     preview:$('#f-preview').value.replace(/\s+$/,''),important:$('#f-important').checked};
   let q;
@@ -2097,9 +2138,10 @@ async function improveForm(){
     set('f-explain',r.explanation); set('f-preview',r.preview);
     if(['easy','medium','hard'].includes(r.difficulty)) $('#f-diff').value=r.difficulty;
     if(Array.isArray(r.hints)&&r.hints.length) $('#f-hints').value=r.hints.map(String).join('\n');
+    if(!$('#f-starter').value.trim()) $('#f-starter').value=boilerplate($('#f-lang').value);
     const tl=normTests(r.tests); if(tl.length){ writeTests(tl); $('#f-testsd').open=true; }
     $('#f-extras').open=true; $('#btn-ai-undo').hidden=false;
-    msg.textContent='Done. Read everything, fix anything that looks wrong, then save. Use Fill outputs by running my solution to double check the test outputs.';
+    msg.textContent='Done. Boilerplate, hints and test cases are ready, and the solution stays hidden from students until they ask for it. '+(typeof r.note==='string'&&r.note.trim()?r.note.trim()+' ':'')+'Read everything, fix anything that looks wrong, then save. Use Fill outputs by running my solution to double check the test outputs.';
   }catch(e){ aiFail(msg,e); }
   btn.disabled=false;
 }
@@ -2705,6 +2747,9 @@ function init(){
   $('#btn-cancel').onclick=()=>{ if(ui.editId&&byId(ui.editId)) openPractice(ui.editId); else goBank(); };
   $('#btn-ai-improve').onclick=improveForm;
   $('#btn-ai-undo').onclick=undoImprove;
+  { const fa=$('#f-auto'), fs=$('#f-statement'); fa.checked=readKey('qv-auto-improve')!=='0'; fa.onchange=()=>store('qv-auto-improve',fa.checked?'1':'0');
+    fs.addEventListener('paste',()=>{ const before=fs.value.trim();
+      setTimeout(()=>{ if(!fa.checked||before||ui.editId||!aiAvailable()||$('#btn-ai-improve').disabled||fs.value.trim().length<20) return; improveForm(); },60); }); }
   $('#ai-show').onclick=()=>{ const k=$('#ai-key'), s=k.type==='password'; k.type=s?'text':'password'; $('#ai-show').textContent=s?'Hide':'Show'; };
   $('#ai-save').onclick=()=>{ applyAIFields(); $('#ai-msg').textContent='Saved.'; toast('AI settings saved'); };
   $('#ai-test').onclick=testAI;
