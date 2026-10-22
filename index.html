@@ -479,6 +479,8 @@ code.inline{font:500 .9em var(--f-mono);background:var(--raise);border:1px solid
   <section id="v-ai" class="view" hidden>
     <div class="intro">
       <h1>AI setup</h1>
+      <p class="note"><strong>Checking code never uses AI.</strong> Answers are checked by really running them on the test cases. JavaScript and Python run inside the browser. Every other language (and Python or JavaScript when the browser cannot run them offline) runs on the <strong>Question Vault local runner</strong> on this computer, which works with no internet. Start it with <code>node local-runner.js</code>. If it is not running, an online compiler is used.</p>
+      <p class="note"><strong>No key needed for AI.</strong> AI already works for everyone through Puter. The first time you use it, allow the Puter sign-in popup. Add your own key below only if you want a different provider.</p>
       <p class="dim">Connect an AI provider (Gemini, OpenAI, Anthropic, OpenRouter, Groq, Ollama or any OpenAI-compatible server) so the vault can rewrite pasted questions, write solutions and test cases, run languages the browser cannot, and mark your answers.</p>
     </div>
     <p class="note" id="ai-env" hidden></p>
@@ -537,7 +539,7 @@ code.inline{font:500 .9em var(--f-mono);background:var(--raise);border:1px solid
         <input id="run-token" type="password" autocomplete="off" spellcheck="false" placeholder="Leave empty for the public server">
         <div class="hint">Sent as X-Auth-Token to the address above. Only needed for a private Judge0 server.</div>
       </div>
-      <div class="checkrow"><input type="checkbox" id="run-guess"><label for="run-guess">If no online compiler can be reached, let AI predict the output (it can be wrong)</label></div>
+      <div class="checkrow" hidden><input type="checkbox" id="run-guess"><label for="run-guess">If no online compiler can be reached, let AI predict the output (it can be wrong)</label></div>
       <div class="row"><button type="button" class="btn primary" id="run-save">Save</button><button type="button" class="btn" id="run-test">Test the compiler</button></div>
       <p id="run-msg" role="status" class="dim"></p>
     </div>
@@ -609,6 +611,7 @@ code.inline{font:500 .9em var(--f-mono);background:var(--raise);border:1px solid
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 
+<script src="https://js.puter.com/v2/"></script>
 <script>
 (function(){
 'use strict';
@@ -1082,8 +1085,9 @@ const PROVIDERS={
 };
 const AI={provider:'gemini',key:'',model:'gemini-2.5-flash',base:'',cfg:{},sample:null};
 const hasCfg=()=>{ const P=PROVIDERS[AI.provider]; return !!AI.key||(!!P.keyOptional&&(P.kind!=='openai'||!!(AI.base||P.base))); };
-const provName=()=>hasCfg()?PROVIDERS[AI.provider].label:AI.sample?'Claude':'AI';
-const aiAvailable=()=>hasCfg()||!!AI.sample;
+const puterOK=()=>typeof window.puter!=='undefined'&&!!window.puter.ai;
+const provName=()=>hasCfg()?PROVIDERS[AI.provider].label:AI.sample?'Claude':'Puter AI';
+const aiAvailable=()=>true;   /* Puter is the default, so AI never needs a key */
 function loadAI(){
   const raw=readKey(KEY_AI); if(!raw) return;
   try{
@@ -1096,7 +1100,7 @@ function loadAI(){
   }catch(e){}
 }
 function saveAI(){ AI.cfg[AI.provider]={key:AI.key,model:AI.model,base:AI.base}; store(KEY_AI,JSON.stringify({provider:AI.provider,cfg:AI.cfg})); }
-function updateBadge(){ const b=$('#ai-badge'); if(!b) return; b.classList.toggle('on',aiAvailable()); b.textContent=hasCfg()?'AI: '+PROVIDERS[AI.provider].label.replace(/ \(.*$/,''):AI.sample?'AI: Claude':'AI: off'; }
+function updateBadge(){ const b=$('#ai-badge'); if(!b) return; b.classList.toggle('on',aiAvailable()); b.textContent=hasCfg()?'AI: '+PROVIDERS[AI.provider].label.replace(/ \(.*$/,''):AI.sample?'AI: Claude':'AI: on (no key)'; }
 async function initSample(){
   try{ if(window.claude&&typeof window.claude.use==='function') AI.sample=await window.claude.use('sample'); }catch(e){ AI.sample=null; }
   updateBadge();
@@ -1187,11 +1191,20 @@ async function claudeText(prompt){
     throw new Error((e&&e.message)||'Claude could not answer.');
   }
 }
+async function puterText(prompt){
+  if(!puterOK()) throw new Error('Puter AI did not load. Check your internet, turn off ad blockers for this site, then reload the page.');
+  try{
+    const r=await puter.ai.chat(prompt+'\n\nReply with the JSON object only.');
+    const c=r&&r.message?r.message.content:r;
+    return Array.isArray(c)?c.map(x=>x.text||'').join(''):String(c);
+  }catch(e){ throw new Error((e&&e.message)||'Puter AI could not answer. Allow the sign-in popup and try again.'); }
+}
 async function askAI(prompt){
   if(!aiAvailable()){ const e=new Error('Connect an AI provider in AI setup first. Gemini, OpenAI, Anthropic, OpenRouter, Groq, Ollama and custom servers are supported.'); e.setup=true; throw e; }
   let text;
   if(hasCfg()){ try{ text=await providerText(prompt); }catch(e){ if(e.network&&AI.sample) text=await claudeText(prompt); else throw e; } }
-  else text=await claudeText(prompt);
+  else if(AI.sample) text=await claudeText(prompt);
+  else text=await puterText(prompt);
   return parseAIJson(text);
 }
 function aiFail(el,e){
@@ -1436,8 +1449,39 @@ async function wbRun(lang,code,stdin){
   const failed=String(d.status)!=='0';
   return {stdout:String(d.program_output||''),stderr:failed&&compErr&&!d.program_output?compErr:String(d.program_error||''),timedOut:false,crashed:failed,ms:0};
 }
+/* ---------- local runner: real compilers on this computer, works offline (start local-runner.js) ---------- */
+const LOCAL_RUN='http://127.0.0.1:2358';
+const LOC={langs:null,down:0};
+async function locFetch(path,init,ms){
+  const c=new AbortController(), tm=setTimeout(()=>c.abort(),ms||15000);
+  try{ return await fetch(LOCAL_RUN+path,Object.assign({signal:c.signal},init||{})); }finally{ clearTimeout(tm); }
+}
+async function localRun(lang,code,stdin){
+  if(Date.now()-LOC.down<10000) throw new Error('local runner is not running');
+  if(!LOC.langs){
+    try{ const r=await locFetch('/languages',{},1500); if(!r.ok) throw new Error('bad'); LOC.langs=await r.json(); if(!Array.isArray(LOC.langs)) throw new Error('bad'); }
+    catch(e){ LOC.langs=null; LOC.down=Date.now(); throw new Error('local runner is not running'); }
+  }
+  const re=J0_PICK[langKey(lang)], m=re?LOC.langs.filter(l=>re.test(String(l.name))):[];
+  if(!m.length) throw new Error('the local runner has no '+lang+' compiler installed');
+  if(langKey(lang)==='java'&&!/void\s+main\s*\(/.test(code)) return {stdout:'',stderr:'Your Java code has no main method, so Java has nothing to start. Add public static void main(String[] args) inside a class (it reads the input, calls your method and prints the result), or use Reset to get the starter code back.',timedOut:false,crashed:true,ms:0};
+  const id=m.reduce((a,b)=>b.id>a.id?b:a).id;
+  let res;
+  try{ res=await locFetch('/submissions?base64_encoded=true&wait=true',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_code:b64e(fixJava(lang,code)),language_id:id,stdin:b64e(stdin||''),cpu_time_limit:5,wall_time_limit:10})},45000); }
+  catch(e){ LOC.langs=null; LOC.down=Date.now(); throw new Error('the local runner stopped answering'); }
+  if(!res.ok) throw new Error('the local runner answered '+res.status);
+  const d=await res.json();
+  const sid=d.status?d.status.id:13, so=b64d(d.stdout), se=b64d(d.stderr), comp=b64d(d.compile_output), msg=b64d(d.message);
+  if(sid===13) throw new Error('local runner: '+(msg||'internal error'));
+  const r={stdout:so,stderr:se,timedOut:sid===5,crashed:sid>=5,ms:Math.round(parseFloat(d.time||0)*1000)};
+  if(sid===6) r.stderr=comp||se||'Compilation error';
+  else if(sid===5) r.stderr=se||'Time limit exceeded.';
+  else if(sid>=7&&!se) r.stderr=msg||(d.status&&d.status.description)||'';
+  return r;
+}
 async function remoteRun(lang,code,stdin){
   const errs=[];
+  try{ const r=await localRun(lang,code,stdin); r.via='your computer'; return r; }catch(e){ errs.push('Local runner: '+((e&&e.message)||e)); }
   try{ const r=await j0Run(lang,code,stdin); r.via='Judge0'; return r; }catch(e){ errs.push('Judge0: '+((e&&e.message)||e)); }
   try{ const r=await wbRun(lang,code,stdin); r.via='Wandbox'; return r; }catch(e){ errs.push('Wandbox: '+((e&&e.message)||e)); }
   const err=new Error(errs.join(' | ')); err.remote=true; throw err;
@@ -1468,24 +1512,16 @@ async function runProgram(q,code,stdins,opts){
     }
     return {engine:'remote',via,results:res,note};
   }catch(e){
-    if(!(RUN.guess&&aiAvailable())){
-      const err=new Error('Could not run '+q.lang+' on an online compiler ('+((e&&e.message)||'no connection')+'). Check your internet connection and try again. You can also let AI predict the output in AI setup, but that can be wrong.');
-      err.setup=true; throw err;
-    }
-    note='No online compiler could be reached, so the AI predicted the output instead.';
+    const err=new Error('Could not run '+q.lang+'. Start the Question Vault local runner on this computer (it works offline), or connect to the internet. ('+((e&&e.message)||'no connection')+')');
+    throw err;
   }
-  if(opts.onStatus) opts.onStatus('Asking '+provName()+' to predict it…');
-  const r=await askAI(termBatchPrompt(q.lang,code,stdins,!!opts.trace));
-  const arr=Array.isArray(r.results)?r.results:[];
-  const results=stdins.map((_,i)=>{ const x=arr[i]||{}; const ec=Number(x.exit_code)||0; return {stdout:String(x.stdout||''),stderr:String(x.stderr||''),timedOut:false,crashed:ec!==0,ms:0}; });
-  return {engine:'ai',results,note:[note,r.note].filter(Boolean).join(' '),trace:String(r.trace||'')};
 }
 const judge=(t,r)=>!!r&&!r.timedOut&&!r.crashed&&cmp(r.stdout)===cmp(t.expected);
 function engineInfo(lang){
   const e=engineFor(lang);
   if(e==='js') return {cls:'real',text:'JavaScript · real run in your browser'};
   if(e==='py') return {cls:'real',text:'Python · real run (Pyodide)'};
-  return {cls:'real',text:lang+' · real compiler (online)'};
+  return {cls:'real',text:lang+' · real compiler'};
 }
 
 /* ---------- terminal panel: console, input and test results ---------- */
@@ -1774,7 +1810,6 @@ function aiTools(q,ta,o,term){
   };
   bRev.onclick=()=>go(bRev,'Reviewing…',async()=>{
     const r=await askAI(reviewPrompt(q,ta.value));
-    if(r.verdict==='correct'&&o.onPass) o.onPass();
     return reviewView(r);
   });
   if(!visual) body.append(h('div',null,h('label',{for:'ai-pred',text:'Predict the output, then check it'}),pred));
@@ -2537,7 +2572,7 @@ function renderGrade(){
   const markers=[];
   const aiAll=h('button',{class:'btn',type:'button',hidden:!aiAvailable(),onclick:async()=>{
     aiAll.disabled=true;
-    for(const m of markers){ if(ex.auto[m.q.id]==='tests'||ex.auto[m.q.id]==='skipped') continue; if(!await m.doMark()) break; }
+    for(const m of markers){ if(ex.auto[m.q.id]==='tests'||ex.auto[m.q.id]==='skipped'||m.q.tests.length) continue; if(!await m.doMark()) break; }
     aiAll.disabled=false;
   }},'Mark the rest with AI');
   const count=h('span',{class:'dim'});
@@ -2564,7 +2599,7 @@ function renderGrade(){
       h('div',null,h('div',{class:'sec-title',text:'Expected output'}),h('pre',{class:'codeblock small'},h('code',{text:ti.first.expected})))));
     card.append(h('div',{class:'seg-row',role:'group','aria-label':'Mark question '+(k+1)},btns.correct,btns.partial,btns.wrong));
     const fb=h('div',{hidden:true,'aria-live':'polite'});
-    const aiBtn=h('button',{class:'btn sm',type:'button'},'Mark with AI');
+    const aiBtn=h('button',{class:'btn sm',type:'button',hidden:q.tests.length>0},'Mark with AI');
     const doMark=async()=>{
       if(!isAnswered(ex,q)){ ex.grades[q.id]='wrong'; saveExam(); sync(); upd(); return true; }
       aiBtn.disabled=true; aiBtn.textContent='Marking…'; fb.hidden=true; let ok=true;
@@ -2576,7 +2611,7 @@ function renderGrade(){
       aiBtn.disabled=false; return ok;
     };
     aiBtn.onclick=doMark; markers.push({q,doMark});
-    card.append(h('div',{class:'row'},aiBtn,h('span',{class:'hint',style:'margin:0',text:'AI suggests a mark. You can change it.'})),fb);
+    card.append(h('div',{class:'row'},aiBtn,h('span',{class:'hint',style:'margin:0',hidden:q.tests.length>0,text:'AI suggests a mark. You can change it.'})),fb);
     list.append(card);
   });
   root.append(list); upd();
